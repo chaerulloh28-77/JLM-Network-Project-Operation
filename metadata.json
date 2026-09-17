@@ -1,0 +1,8 @@
+{
+  "name": "Network Project & Operation",
+  "description": "Aplikasi mobile-first monitoring harian project jaringan fiber optic, sipil, dan penarikan kabel.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

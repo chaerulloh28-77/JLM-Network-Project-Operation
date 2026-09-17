@@ -1,0 +1,188 @@
+import React from 'react';
+import { LogOut, Cpu, Eraser, ShieldCheck, UserCheck, Cloud, FileText, BarChart3 } from 'lucide-react';
+import { UserRole } from '../types';
+
+interface ReportHeaderProps {
+  userEmail: string;
+  userRole?: UserRole;
+  onLogout: () => void;
+  savedReportsCount: number;
+  onOpenHistory?: () => void;
+  onOpenClearScreen?: () => void;
+  activeTab?: 'input' | 'admin';
+  onTabChange?: (tab: 'input' | 'admin') => void;
+}
+
+export const ReportHeader: React.FC<ReportHeaderProps> = ({
+  userEmail,
+  userRole = 'waspang',
+  onLogout,
+  savedReportsCount,
+  onOpenHistory,
+  onOpenClearScreen,
+  activeTab = 'input',
+  onTabChange,
+}) => {
+  const isSuperAdminUser = userEmail?.trim().toLowerCase() === 'admin@gov.com';
+  const isAdmin = userRole === 'admin' || isSuperAdminUser;
+
+  return (
+    <header className="sticky top-0 z-30 bg-[#050b14]/98 backdrop-blur-md border-b border-cyan-500/20 px-3 sm:px-4 py-3 shadow-lg shadow-black/50">
+      <div className="w-full mx-auto">
+        {/* Top telemetry bar */}
+        <div className="flex items-center justify-between gap-2 pb-2 mb-2 border-b border-slate-800/80 text-[11px] font-mono-cyber">
+          {/* App Brand & Install Icon */}
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                window.dispatchEvent(new CustomEvent('open-gov-install-modal'));
+              }}
+              className="group p-0.5 rounded-md hover:bg-cyan-950/60 border border-cyan-500/40 hover:border-cyan-300 bg-[#050b14] shadow-[0_0_8px_rgba(6,182,212,0.4)] shrink-0 transition-all cursor-pointer active:scale-95"
+              title="Ketuk Icon GovMonitor (Info & Pemasangan di Layar Utama HP)"
+            >
+              <img
+                src="/icon.svg"
+                alt="Icon Aplikasi GovMonitor"
+                className="w-5 h-5 rounded object-contain group-hover:scale-105 transition-transform"
+              />
+            </button>
+
+            <span className="font-ltenergy font-black tracking-widest text-xs sm:text-sm text-cyan-400 uppercase">
+              JALA LINTAS MEDIA
+            </span>
+          </div>
+
+          <div className="flex items-center gap-1.5 sm:gap-2">
+            {onOpenClearScreen && (
+              <button
+                type="button"
+                onClick={onOpenClearScreen}
+                className="h-7 inline-flex items-center gap-1.5 px-2.5 rounded-lg bg-amber-950/70 border border-amber-500/40 text-amber-300 hover:bg-amber-900/70 hover:text-amber-200 transition-all cursor-pointer text-[11px] font-mono-cyber font-semibold shadow-sm"
+                title="Bersihkan layar untuk membuat daily progress baru"
+              >
+                <Eraser className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                <span className="hidden xs:inline">Clear Screen</span>
+                <span className="xs:hidden">Clear</span>
+              </button>
+            )}
+
+            {onOpenHistory && (
+              <button
+                type="button"
+                onClick={onOpenHistory}
+                className="h-7 inline-flex items-center gap-1.5 px-2.5 rounded-lg bg-slate-800/90 border border-slate-700 text-slate-300 hover:text-cyan-300 hover:border-slate-600 transition-all cursor-pointer text-[11px] font-mono-cyber font-semibold"
+                title="Lihat riwayat laporan tersimpan"
+              >
+                <Cpu className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                <span>Logs ({savedReportsCount})</span>
+              </button>
+            )}
+
+            <div className="flex items-center gap-1.5 text-slate-400 pl-1 border-l border-slate-800">
+              {/* User Identity & Role Badge */}
+              <div className="hidden xs:flex flex-col items-end leading-tight">
+                <span className="text-slate-300 truncate max-w-[110px] text-[10px] font-mono-cyber font-medium" title={userEmail}>
+                  {userEmail.split('@')[0]}
+                </span>
+                {isAdmin ? (
+                  <span className="inline-flex items-center gap-0.5 text-[9px] font-mono-cyber font-bold text-amber-400 bg-amber-950/80 px-1 rounded border border-amber-500/40">
+                    <ShieldCheck className="w-2.5 h-2.5 text-amber-400" />
+                    ADMIN
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-0.5 text-[9px] font-mono-cyber font-semibold text-cyan-300 bg-cyan-950/80 px-1 rounded border border-cyan-500/30">
+                    <UserCheck className="w-2.5 h-2.5 text-cyan-400" />
+                    WASPANG
+                  </span>
+                )}
+              </div>
+
+              <button
+                type="button"
+                onClick={onLogout}
+                className="h-7 w-7 flex items-center justify-center rounded-lg bg-slate-800/80 hover:bg-red-950 hover:text-red-400 hover:border-red-800/60 border border-slate-700/60 text-slate-300 transition-all cursor-pointer"
+                title={`Keluar (${userEmail} - Role: ${userRole})`}
+                aria-label="Logout"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Main Header title and subtext */}
+        <div>
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <div className="w-2 h-2 rounded-sm bg-cyan-400 rotate-45 shrink-0" />
+                <h1 className="text-base sm:text-xl font-black font-ltenergy tracking-[0.16em] sm:tracking-[0.22em] text-cyan-400 uppercase leading-none drop-shadow-[0_0_10px_rgba(6,182,212,0.45)]">
+                  JALA LINTAS MEDIA
+                </h1>
+              </div>
+              <div className="flex items-center gap-2 pl-4">
+                <h2 className="text-xs sm:text-sm font-bold font-cyber text-slate-200 tracking-[0.08em] sm:tracking-[0.12em] uppercase">
+                  Network Project <span className="text-cyan-400 font-black">&amp;</span> Operation <span className="text-cyan-400 text-[11px] sm:text-xs font-normal font-mono-cyber normal-case tracking-normal">(Daily Progress)</span>
+                </h2>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="inline-flex items-center gap-1.5 text-[10px] font-mono-cyber text-emerald-400 bg-emerald-950/70 px-2 py-0.5 rounded-full border border-emerald-500/40" title="Cloud Database Terpusat Aktif: Sinkronisasi HP ⇋ Laptop Real-Time">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                <Cloud className="w-3 h-3 text-emerald-400" />
+                <span className="hidden xs:inline">Cloud (HP ⇋ Laptop)</span>
+                <span className="xs:hidden">Cloud</span>
+              </span>
+              <span className="inline-flex items-center gap-1 text-[10px] font-mono-cyber text-cyan-300 bg-cyan-950/70 px-2 py-0.5 rounded-full border border-cyan-500/30" title="Aplikasi Bekerja Dibelakang Layar (PWA Offline & Background Auto-Save Aktif)">
+                <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
+                <span>Background Sync</span>
+              </span>
+              <span className="text-[10px] font-mono-cyber text-cyan-400/90 font-medium tracking-wider">
+                Designed by PAUL
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Dual Tab Navigation: Input Harian vs Admin Rekap (Hanya untuk admin@gov.com) */}
+        {isSuperAdminUser && onTabChange && (
+          <div className="flex items-center gap-2 mt-3 pt-2.5 border-t border-slate-800/80">
+            <button
+              type="button"
+              id="nav-tab-input-harian"
+              onClick={() => onTabChange('input')}
+              className={`flex-1 h-9 px-3 rounded-xl font-cyber text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                activeTab === 'input'
+                  ? 'bg-cyan-500 text-black shadow-lg shadow-cyan-500/25 border border-cyan-400'
+                  : 'bg-[#091224] text-slate-300 hover:text-white border border-slate-800 hover:border-slate-700'
+              }`}
+            >
+              <FileText className={`w-4 h-4 ${activeTab === 'input' ? 'text-black' : 'text-cyan-400'}`} />
+              <span>Input Harian</span>
+            </button>
+
+            <button
+              type="button"
+              id="nav-tab-admin-rekap"
+              onClick={() => onTabChange('admin')}
+              className={`flex-1 h-9 px-3 rounded-xl font-cyber text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                activeTab === 'admin'
+                  ? 'bg-gradient-to-r from-amber-500 to-amber-400 text-black shadow-lg shadow-amber-500/25 border border-amber-300'
+                  : 'bg-[#091224] text-slate-300 hover:text-white border border-slate-800 hover:border-slate-700'
+              }`}
+            >
+              <BarChart3 className={`w-4 h-4 ${activeTab === 'admin' ? 'text-black' : 'text-amber-400'}`} />
+              <span>Admin Rekap</span>
+              <span className={`text-[9px] font-mono-cyber px-1.5 py-0.5 rounded font-bold ${
+                activeTab === 'admin' ? 'bg-black/20 text-black' : 'bg-amber-950/90 text-amber-300 border border-amber-500/40'
+              }`}>
+                Mingguan
+              </span>
+            </button>
+          </div>
+        )}
+      </div>
+    </header>
+  );
+};

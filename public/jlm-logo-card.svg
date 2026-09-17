@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 420" width="800" height="420">
+  <defs>
+    <filter id="navy-crease" x="-25%" y="-25%" width="150%" height="150%">
+      <feDropShadow dx="-1.5" dy="3.5" stdDeviation="3" flood-color="#000e26" flood-opacity="0.8" />
+    </filter>
+    <filter id="layer-overlap" x="-25%" y="-25%" width="150%" height="150%">
+      <feDropShadow dx="-2" dy="2" stdDeviation="2.5" flood-color="#001230" flood-opacity="0.75" />
+    </filter>
+  </defs>
+  <rect width="800" height="420" rx="36" fill="#001b44" />
+  <g transform="translate(42, 54)">
+    <g id="ribbon-creases">
+      <path d="M 52 118 C 52 158 76 195 132 195 C 164 195 186 178 200 152 L 160 152 C 150 166 138 174 125 174 C 95 174 77 150 77 118 Z" fill="#00112e" />
+      <path d="M 205 50 L 254 50 C 268 50 282 60 292 78 L 246 156 L 216 102 Z" fill="#00112e" filter="url(#layer-overlap)" />
+      <path d="M 378 195 C 410 195 426 179 426 159 C 426 139 408 131 386 135 L 386 157 C 397 155 404 160 404 169 C 404 178 394 183 378 183 Z" fill="#00112e" filter="url(#navy-crease)" />
+      <path d="M 428 50 L 476 50 C 490 50 504 60 514 80 L 472 154 L 440 98 Z" fill="#00112e" filter="url(#layer-overlap)" />
+      <path d="M 474 154 L 528 195 L 498 195 Z" fill="#00112e" filter="url(#navy-crease)" />
+      <path d="M 590 50 L 638 50 C 652 50 666 60 676 80 L 634 154 L 602 98 Z" fill="#00112e" filter="url(#layer-overlap)" />
+    </g>
+    <g id="ribbon-white-surfaces" fill="#ffffff">
+      <path d="M 52 118 L 88 118 L 74 90 L 38 90 Z" />
+      <path d="M 52 118 L 88 118 C 88 144 104 162 126 162 C 146 162 164 142 178 114 L 250 50 L 206 50 L 142 152 C 132 164 120 172 106 172 C 92 172 86 164 86 146 C 86 130 86 118 86 118 Z" />
+      <path d="M 224 50 C 246 50 274 55 296 78 L 280 90 C 264 70 242 66 224 66 Z" />
+      <path d="M 296 78 L 248 156 L 226 195 L 270 195 L 294 146 L 336 72 Z" filter="url(#layer-overlap)" />
+      <path d="M 226 195 L 384 195 C 408 195 426 181 426 159 C 426 139 408 133 386 133 L 386 149 C 398 149 406 153 406 163 C 406 174 392 179 376 179 L 260 179 L 270 195 Z" />
+      <path d="M 336 195 L 380 195 L 476 50 L 428 50 Z" filter="url(#layer-overlap)" />
+      <path d="M 446 50 C 468 50 496 55 520 78 L 504 90 C 486 70 466 66 448 66 Z" />
+      <path d="M 520 78 L 474 154 L 478 195 L 524 195 L 560 128 L 538 84 Z" filter="url(#layer-overlap)" />
+      <path d="M 508 195 L 546 195 L 638 50 L 592 50 Z" filter="url(#layer-overlap)" />
+      <path d="M 608 50 C 630 50 658 55 682 78 L 666 90 C 648 70 628 66 610 66 Z" />
+      <path d="M 682 78 L 642 154 L 640 195 L 718 195 L 734 104 Z" filter="url(#layer-overlap)" />
+      <g transform="translate(724, 36)">
+        <circle cx="11" cy="11" r="10.5" fill="none" stroke="#ffffff" stroke-width="2.2" />
+        <text x="11" y="15.2" font-family="system-ui, -apple-system, sans-serif" font-size="12.5" font-weight="900" text-anchor="middle" fill="#ffffff">R</text>
+      </g>
+    </g>
+    <g transform="translate(376, 280)">
+      <text x="0" y="0" text-anchor="middle" font-family="'Plus Jakarta Sans', 'Inter', 'Montserrat', -apple-system, sans-serif" font-size="37" font-weight="900" letter-spacing="18px" fill="#ffffff" style="text-transform: uppercase;">JALA LINTAS MEDIA</text>
+    </g>
+  </g>
+</svg>

@@ -1,0 +1,329 @@
+import React, { useState, useEffect } from 'react';
+import { Lock, Mail, Eye, EyeOff, Radio, AlertTriangle, ShieldCheck, UserCheck } from 'lucide-react';
+import { sendLoginNotification } from '../utils/emailHelper';
+import { CurrentUser, UserRole } from '../types';
+import { MobileInstallBanner } from './MobileInstallBanner';
+
+interface LoginPageProps {
+  onLoginSuccess: (user: CurrentUser) => void;
+}
+
+export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [supportsWebkitSecurity, setSupportsWebkitSecurity] = useState(true);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.CSS && !CSS.supports('-webkit-text-security', 'disc')) {
+      setSupportsWebkitSecurity(false);
+    }
+  }, []);
+
+  // Deteksi role berdasarkan input email
+  const cleanEmail = email.trim().toLowerCase();
+  const isDetectedAdmin = cleanEmail === 'admin@gov.com';
+  const detectedRole: UserRole = isDetectedAdmin ? 'admin' : 'waspang';
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMessage('');
+
+    // 1. Validasi Keberadaan Email
+    if (!cleanEmail) {
+      setErrorMessage('Email wajib diisi');
+      return;
+    }
+
+    // 2. Validasi Format Email (Universal Regex)
+    const EMAIL_REGEX = /\S+@\S+\.\S+/;
+    if (!EMAIL_REGEX.test(cleanEmail)) {
+      setErrorMessage('Format email tidak valid');
+      return;
+    }
+
+    // 3. Validasi Keberadaan Password
+    if (!password) {
+      setErrorMessage('Password wajib diisi');
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    setTimeout(() => {
+      // 4. Logika Akses Admin (Eksklusif admin@gov.com)
+      if (isDetectedAdmin) {
+        if (password !== 'gov_123') {
+          setErrorMessage('Password Admin tidak valid');
+          setIsSubmitting(false);
+          return;
+        }
+      } else {
+        // 5. Logika Akses Waspang (Universal - semua email valid selain admin@gov.com)
+        if (password !== 'waspang_gov123') {
+          setErrorMessage('Password Waspang tidak valid');
+          setIsSubmitting(false);
+          return;
+        }
+      }
+
+      const emailPrefix = email.trim().split('@')[0] || 'Pengawas';
+      const currentUser: CurrentUser = {
+        email: email.trim(),
+        role: detectedRole,
+        name: isDetectedAdmin ? 'Administrator' : emailPrefix,
+      };
+
+      // Kirim notifikasi login real-time ke chaerulloh28@gmail.com (non-blocking)
+      try {
+        sendLoginNotification(email.trim()).catch((err) => {
+          console.warn('[LoginPage] Gagal mengirim notifikasi email login:', err);
+        });
+      } catch {
+        // Abaikan jika helper mengalami kendala
+      }
+
+      onLoginSuccess(currentUser);
+      setIsSubmitting(false);
+    }, 250);
+  };
+
+  return (
+    <div className="min-h-[100dvh] w-full flex items-center justify-center p-4 bg-[#050b14] relative overflow-hidden">
+      {/* Cyber Grid Background Accents */}
+      <div 
+        className="absolute inset-0 pointer-events-none opacity-20"
+        style={{
+          backgroundImage: `
+            linear-gradient(to right, #00f0ff15 1px, transparent 1px),
+            linear-gradient(to bottom, #00f0ff15 1px, transparent 1px)
+          `,
+          backgroundSize: '32px 32px'
+        }}
+      />
+
+      {/* Subtle Glow Spheres */}
+      <div className="absolute -top-24 -left-24 w-72 h-72 rounded-full bg-cyan-600/15 blur-3xl pointer-events-none" />
+      <div className="absolute -bottom-24 -right-24 w-72 h-72 rounded-full bg-emerald-600/15 blur-3xl pointer-events-none" />
+
+      {/* Centered Login Card */}
+      <div className="w-full max-w-sm z-10">
+        <div className="bg-[#091224]/90 border border-cyan-500/30 rounded-2xl p-6 sm:p-8 shadow-2xl shadow-cyan-950/50 backdrop-blur-xl relative">
+          
+          {/* Cyber Decorative Accents */}
+          <div className="absolute -top-px left-8 right-8 h-px bg-gradient-to-r from-transparent via-cyan-400 to-transparent" />
+          <div className="absolute -bottom-px left-8 right-8 h-px bg-gradient-to-r from-transparent via-emerald-400 to-transparent" />
+          
+          {/* Top Badge */}
+          <div className="flex items-center justify-between mb-4">
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-cyan-950/80 border border-cyan-500/40 text-[11px] font-mono-cyber font-medium text-cyan-300">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+              <span>GOV SECURE PORTAL</span>
+            </div>
+            <div className="flex items-center gap-1 text-[11px] font-mono-cyber text-slate-400">
+              <Radio className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
+              <span>LIVE</span>
+            </div>
+          </div>
+
+          {/* Mobile App Icon - Clickable & Operable */}
+          <div className="flex justify-center mb-3">
+            <button
+              type="button"
+              onClick={() => {
+                window.dispatchEvent(new CustomEvent('open-gov-install-modal'));
+              }}
+              className="relative p-1 rounded-2xl bg-gradient-to-b from-cyan-500/40 via-cyan-500/10 to-transparent border border-cyan-500/40 hover:border-cyan-300 shadow-xl shadow-cyan-500/20 group cursor-pointer active:scale-95 transition-all"
+              title="Ketuk untuk Pasang Icon di Layar Utama HP"
+            >
+              <img
+                src="/icon.svg"
+                alt="Icon Aplikasi GovMonitor"
+                className="w-13 h-13 sm:w-15 sm:h-15 rounded-xl object-contain bg-[#050b14] shadow-md group-hover:scale-105 transition-transform"
+              />
+              <span className="absolute -bottom-1 -right-1 flex h-4 w-4">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75" />
+                <span className="relative inline-flex rounded-full h-4 w-4 bg-cyan-400 text-[9px] text-black font-bold items-center justify-center">
+                  ⚡
+                </span>
+              </span>
+            </button>
+          </div>
+
+          <div className="text-center mb-6">
+            {/* JALA LINTAS MEDIA - Jenis Font LTenergy, Ukuran Lebih Besar, Elegan & Eksklusif */}
+            <div className="flex items-center justify-center gap-2 sm:gap-3 mb-2 px-1">
+              <span className="h-px flex-1 bg-gradient-to-r from-transparent via-cyan-500/40 to-cyan-400" />
+              <h1 className="text-xl sm:text-3xl font-black font-ltenergy tracking-[0.14em] sm:tracking-[0.2em] text-cyan-400 uppercase whitespace-nowrap drop-shadow-[0_0_15px_rgba(6,182,212,0.55)]">
+                JALA LINTAS MEDIA
+              </h1>
+              <span className="h-px flex-1 bg-gradient-to-l from-transparent via-cyan-500/40 to-cyan-400" />
+            </div>
+
+            {/* Network Project & Operation - Ukuran Lebih Kecil, Tata Letak Central Rata Kiri Rata Kanan */}
+            <div className="w-full flex items-center justify-between gap-2 sm:gap-3 px-1 my-1">
+              <span className="h-0.5 w-4 sm:w-8 bg-gradient-to-r from-transparent to-cyan-400 shrink-0 rounded-full" />
+              <h2 className="text-xs sm:text-sm font-bold tracking-[0.14em] sm:tracking-[0.2em] uppercase text-slate-100 font-cyber flex-1 text-center leading-relaxed drop-shadow-[0_1px_6px_rgba(6,182,212,0.25)]">
+                Network Project <span className="text-cyan-400 font-black">&amp;</span> Operation
+              </h2>
+              <span className="h-0.5 w-4 sm:w-8 bg-gradient-to-l from-transparent to-cyan-400 shrink-0 rounded-full" />
+            </div>
+
+            {/* Symmetrical divider line with author signature */}
+            <div className="flex items-center justify-center gap-2.5 mt-2.5 text-xs text-cyan-400 font-mono-cyber tracking-widest font-semibold uppercase">
+              <span className="h-px w-6 sm:w-10 bg-gradient-to-r from-transparent to-cyan-500/60" />
+              <span className="flex items-center gap-1.5 text-[11px] text-cyan-300">
+                <span className="w-1 h-1 rounded-full bg-cyan-400 inline-block" />
+                Designed by PAUL
+                <span className="w-1 h-1 rounded-full bg-cyan-400 inline-block" />
+              </span>
+              <span className="h-px w-6 sm:w-10 bg-gradient-to-l from-transparent to-cyan-500/60" />
+            </div>
+          </div>
+
+          {/* Error Message Box */}
+          {errorMessage && (
+            <div 
+              id="login-error-alert" 
+              className="mb-4 p-3 rounded-lg bg-red-950/80 border border-red-500/60 flex items-center gap-2.5 text-red-300 text-xs animate-shake"
+            >
+              <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
+              <div className="font-semibold text-red-200">{errorMessage}</div>
+            </div>
+          )}
+
+          {/* Form */}
+          <form noValidate autoComplete="off" onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label 
+                htmlFor="input-email" 
+                className="block text-xs font-mono-cyber uppercase tracking-wider text-slate-300 mb-1.5"
+              >
+                Email
+              </label>
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-500">
+                  <Mail className="w-4 h-4 text-cyan-400/70" />
+                </div>
+                <input
+                  id="input-email"
+                  name="gov_access_account"
+                  type="text"
+                  inputMode="email"
+                  autoComplete="off"
+                  autoCorrect="off"
+                  autoCapitalize="none"
+                  spellCheck={false}
+                  data-lpignore="true"
+                  data-1p-ignore="true"
+                  data-form-type="other"
+                  value={email}
+                  onChange={(e) => {
+                    setEmail(e.target.value);
+                    if (errorMessage) setErrorMessage('');
+                  }}
+                  placeholder="nama@domain.com"
+                  className={`w-full pl-10 pr-3.5 py-2.5 rounded-lg bg-[#0d1830] border text-white placeholder-slate-500 text-sm focus:outline-none transition-colors ${
+                    errorMessage && (errorMessage.toLowerCase().includes('email'))
+                      ? 'border-red-500 focus:border-red-500 focus:ring-1 focus:ring-red-500'
+                      : 'border-slate-700/80 focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400'
+                  }`}
+                />
+              </div>
+
+              {/* Dynamic Role Badge Indicator */}
+              {cleanEmail && (
+                <div className="mt-1.5 flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[10px] font-mono-cyber text-slate-400">Terdeteksi Role:</span>
+                    {isDetectedAdmin ? (
+                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-500/20 border border-amber-500/50 text-[10px] font-mono-cyber font-bold text-amber-300">
+                        <ShieldCheck className="w-3 h-3 text-amber-400" />
+                        ADMIN (Akses Penuh)
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-cyan-950/70 border border-cyan-500/40 text-[10px] font-mono-cyber font-semibold text-cyan-300">
+                        <UserCheck className="w-3 h-3 text-cyan-400" />
+                        WASPANG (Pengawas)
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div>
+              <label 
+                htmlFor="input-password" 
+                className="block text-xs font-mono-cyber uppercase tracking-wider text-slate-300 mb-1.5"
+              >
+                Password
+              </label>
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-500">
+                  <Lock className="w-4 h-4 text-cyan-400/70" />
+                </div>
+                <input
+                  id="input-password"
+                  name="gov_verification_key"
+                  type={showPassword || supportsWebkitSecurity ? 'text' : 'password'}
+                  style={!showPassword && supportsWebkitSecurity ? { WebkitTextSecurity: 'disc' } : undefined}
+                  autoComplete="off"
+                  autoCorrect="off"
+                  autoCapitalize="none"
+                  spellCheck={false}
+                  data-lpignore="true"
+                  data-1p-ignore="true"
+                  data-form-type="other"
+                  value={password}
+                  onChange={(e) => {
+                    setPassword(e.target.value);
+                    if (errorMessage) setErrorMessage('');
+                  }}
+                  placeholder="Masukkan password"
+                  className={`w-full pl-10 pr-10 py-2.5 rounded-lg bg-[#0d1830] border text-white placeholder-slate-500 text-sm focus:outline-none transition-colors ${
+                    errorMessage && (errorMessage.toLowerCase().includes('password'))
+                      ? 'border-red-500 focus:border-red-500 focus:ring-1 focus:ring-red-500' 
+                      : 'border-slate-700/80 focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400'
+                  }`}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-200"
+                >
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+
+            <button
+              id="btn-login-submit"
+              type="submit"
+              disabled={isSubmitting}
+              className="w-full mt-2 py-3 px-4 rounded-xl bg-gradient-to-r from-cyan-500 to-emerald-500 hover:from-cyan-400 hover:to-emerald-400 text-[#050b14] font-bold font-cyber tracking-wider uppercase text-sm shadow-lg shadow-cyan-500/20 active:scale-[0.99] transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-70"
+            >
+              {isSubmitting ? (
+                <span>MEMVERIFIKASI...</span>
+              ) : (
+                <span>Masuk Sistem</span>
+              )}
+            </button>
+          </form>
+        </div>
+
+        {/* Mobile App Icon / Add to Home Screen Banner */}
+        <div className="mt-2">
+          <MobileInstallBanner />
+        </div>
+
+        {/* Footer Brand Info */}
+        <div className="text-center mt-4 text-slate-500 text-[11px] font-mono-cyber">
+          GOV-FO-NET v4.2 • Designed by PAUL
+        </div>
+      </div>
+    </div>
+  );
+};

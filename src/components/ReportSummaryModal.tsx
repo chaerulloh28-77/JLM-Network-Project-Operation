@@ -1,0 +1,624 @@
+import React, { useState } from 'react';
+import { 
+  CheckCircle, 
+  X, 
+  Copy, 
+  Check, 
+  Calendar, 
+  Cloud, 
+  MapPin, 
+  Share2, 
+  MessageSquare, 
+  Edit3, 
+  Clock, 
+  Phone,
+  User,
+  Lock,
+  ShieldCheck,
+  Paperclip,
+  FileText,
+  Image as ImageIcon,
+  ExternalLink,
+  Trash2,
+  ArrowLeft,
+  Building,
+  Shield
+} from 'lucide-react';
+import { DailyReportFormData, CurrentUser } from '../types';
+import { calculateTotals, shareToWhatsApp, generateWhatsAppReportText, isPengamananReport } from '../utils/whatsapp';
+
+interface ReportSummaryModalProps {
+  report: DailyReportFormData | null;
+  currentUser?: CurrentUser;
+  onClose: () => void;
+  onNewReport?: () => void;
+  onEditReport?: (report: DailyReportFormData) => void;
+  onDeleteReport?: (reportId: string) => void;
+}
+
+export const ReportSummaryModal: React.FC<ReportSummaryModalProps> = ({
+  report,
+  currentUser,
+  onClose,
+  onNewReport,
+  onEditReport,
+  onDeleteReport,
+}) => {
+  const [copied, setCopied] = useState(false);
+  const [whatsappPhone, setWhatsappPhone] = useState('');
+  const [showPhoneInput, setShowPhoneInput] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
+  if (!report) return null;
+
+  const author = report.authorEmail || '';
+  const isOwner = !!(currentUser?.email && author && currentUser.email.toLowerCase() === author.toLowerCase());
+  const isAdmin = currentUser?.role === 'admin';
+  const canModify = isAdmin || isOwner || !author;
+  const isPengamanan = isPengamananReport(report);
+
+  const { totalBoring, totalPulling, totalHH, totalHB, totalMH, totalMB, totalPit } =
+    calculateTotals(report);
+
+  const displayHH = report.totalProgressHH || totalHH.toString();
+  const displayHB = report.totalProgressHB || totalHB.toString();
+  const displayMH = report.totalProgressMH || totalMH.toString();
+
+  const handleCopySummary = () => {
+    const text = generateWhatsAppReportText(report);
+    navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleShareWA = () => {
+    shareToWhatsApp(report, whatsappPhone.trim() || undefined);
+    // Otomatis menutup popup rekap dan kembali ke tampilan aplikasi formulir setelah WhatsApp dibuka
+    setTimeout(() => {
+      onClose();
+    }, 600);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-sm overflow-y-auto">
+      <div className="relative w-full max-w-md bg-[#091224] border border-cyan-500/50 rounded-2xl shadow-2xl shadow-cyan-950/60 overflow-hidden my-auto max-h-[92vh] flex flex-col animate-fadeIn">
+        
+        {/* Top Glowing Ribbon */}
+        <div className="h-1.5 w-full bg-gradient-to-r from-emerald-400 via-cyan-400 to-amber-400 shrink-0" />
+
+        {/* Modal Header */}
+        <div className="p-3.5 sm:p-4 pb-3 flex items-center justify-between shrink-0 bg-[#070e1c] border-b border-slate-800">
+          <div className="flex items-center gap-2.5">
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-1 -ml-1 rounded-lg text-slate-400 hover:text-cyan-300 hover:bg-slate-800 transition-colors cursor-pointer flex items-center gap-1 active:scale-95"
+              title="Kembali ke formulir laporan"
+            >
+              <ArrowLeft className="w-4 h-4 text-cyan-400" />
+              <span className="text-xs font-cyber text-slate-200">Kembali</span>
+            </button>
+            <div className="h-4 w-px bg-slate-700 mx-0.5" />
+            <div className="w-8 h-8 rounded-full bg-emerald-500/20 border border-emerald-400 flex items-center justify-center text-emerald-400 shrink-0">
+              <CheckCircle className="w-4 h-4" />
+            </div>
+            <div>
+              <span className="text-[10px] font-mono-cyber uppercase tracking-wider text-emerald-400 font-semibold block leading-none">
+                LAPORAN TERSIMPAN
+              </span>
+              <h2 className="text-xs sm:text-sm font-bold font-cyber text-white truncate mt-0.5">
+                Rekap Progress Harian
+              </h2>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+            title="Tutup Modal"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Modal Body */}
+        <div className="p-4 sm:p-5 space-y-4 overflow-y-auto flex-1 text-xs">
+          
+          {/* Metadata Card */}
+          <div className="bg-[#050b14] p-3.5 rounded-xl border border-cyan-500/20 space-y-2">
+            {report.projectId && (
+              <div className="flex items-center justify-between text-slate-300 text-[11px] pb-1 border-b border-slate-800/60">
+                <span className="text-slate-400 font-mono-cyber">Project ID:</span>
+                <span className="font-mono-cyber font-bold text-cyan-400 bg-cyan-950/70 border border-cyan-500/30 px-1.5 py-0.5 rounded">
+                  {report.projectId}
+                </span>
+              </div>
+            )}
+
+            <div className="flex items-center justify-between text-slate-300 pb-1 border-b border-slate-800/60">
+              <span className="text-slate-400 font-mono-cyber">Kategori Project:</span>
+              <span className="font-mono-cyber font-bold text-xs">
+                {(report.projectCategory === 'Pengamanan' || report.projectName?.toLowerCase().includes('pengamanan')) ? (
+                  <span className="text-amber-300 bg-amber-950/80 border border-amber-500/50 px-2 py-0.5 rounded-full flex items-center gap-1">
+                    <Shield className="w-3 h-3 text-amber-400" />
+                    <span>Pengamanan</span>
+                  </span>
+                ) : (
+                  <span className="text-emerald-300 bg-emerald-950/80 border border-emerald-500/50 px-2 py-0.5 rounded-full flex items-center gap-1">
+                    <Building className="w-3 h-3 text-emerald-400" />
+                    <span>Relokasi Goverment</span>
+                  </span>
+                )}
+              </span>
+            </div>
+
+            {report.jenisPengamanan && (
+              <div className="flex items-start justify-between text-slate-300 pb-1 border-b border-slate-800/60 gap-2">
+                <span className="text-slate-400 font-mono-cyber shrink-0">Jenis Pengamanan:</span>
+                <div className="text-right">
+                  <span className="text-amber-300 bg-amber-950/90 border border-amber-500/50 px-2 py-0.5 rounded text-xs font-cyber font-bold inline-block">
+                    {report.jenisPengamanan}
+                  </span>
+                  {report.subJenisPerapihanAsset && report.subJenisPerapihanAsset.length > 0 && (
+                    <div className="text-[10px] text-amber-400/90 font-mono-cyber mt-0.5">
+                      {report.subJenisPerapihanAsset.join(' • ')}
+                    </div>
+                  )}
+                  {report.keteranganPengamanan && (
+                    <div className="text-[10px] text-slate-400 font-mono-cyber italic mt-0.5 max-w-[200px] line-clamp-2">
+                      &ldquo;{report.keteranganPengamanan}&rdquo;
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            <div className="flex items-center justify-between text-slate-300">
+              <span className="text-slate-400 font-mono-cyber">
+                {report.projectCategory === 'Pengamanan' ? 'Jenis Pengaman:' : 'Nama Project:'}
+              </span>
+              <span className="font-cyber font-bold text-cyan-300 text-xs sm:text-sm truncate max-w-[200px]">
+                {report.projectName || 'Project Lapangan'}
+              </span>
+            </div>
+
+            {report.area && (
+              <div className="flex items-center justify-between text-slate-300 text-[11px] pt-1 border-t border-slate-800/60">
+                <span className="text-slate-400 font-mono-cyber">Area:</span>
+                <span className="font-mono-cyber font-bold text-indigo-300 bg-indigo-950/70 border border-indigo-500/30 px-1.5 py-0.5 rounded">
+                  {report.area}
+                </span>
+              </div>
+            )}
+
+            {report.waspangName && (
+              <div className="flex items-center justify-between text-slate-300 text-[11px] pt-1 border-t border-slate-800/60">
+                <span className="text-slate-400 font-mono-cyber">Waspang (Pengawas):</span>
+                <span className="font-mono-cyber font-semibold text-emerald-300">
+                  {report.waspangName}
+                </span>
+              </div>
+            )}
+
+            {/* Author Ownership Metadata */}
+            <div className="flex items-center justify-between text-slate-300 text-[11px] pt-1 border-t border-slate-800/60">
+              <span className="text-slate-400 font-mono-cyber">Pembuat Laporan (Author):</span>
+              <span className="font-mono-cyber font-semibold text-cyan-300 flex items-center gap-1">
+                <User className="w-3 h-3 text-cyan-400" />
+                <span>{author ? (isOwner ? `${author} (Anda)` : author) : 'Anonim'}</span>
+                {report.authorRole === 'admin' && (
+                  <span className="text-[9px] text-amber-400 bg-amber-950/80 px-1 rounded border border-amber-500/40">
+                    Admin
+                  </span>
+                )}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-800/80 text-[11px]">
+              <div className="flex items-center gap-1.5 text-slate-300">
+                <Calendar className="w-3.5 h-3.5 text-white shrink-0" />
+                <span>
+                  {report.reportDate} {report.dayNumber ? `(Hari ke-${report.dayNumber})` : ''}
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5 text-slate-300">
+                <Cloud className="w-3.5 h-3.5 text-amber-400" />
+                <span className="truncate">{report.weatherCondition}</span>
+              </div>
+            </div>
+
+            {(report.startDate || report.durasiPekerjaan || report.endDate) && (
+              <div className="text-[11px] font-mono-cyber text-slate-400 pt-1 border-t border-slate-800/60 flex items-center gap-1.5">
+                <Clock className="w-3 h-3 text-emerald-400 shrink-0" />
+                <span>
+                  Start: <span className="text-slate-200">{report.startDate || '-'}</span>
+                  {report.durasiPekerjaan ? (
+                    <span> • Sisa Durasi: <span className="text-emerald-400 font-semibold">{report.durasiPekerjaan} Hari</span></span>
+                  ) : report.endDate ? (
+                    <span> s/d <span className="text-slate-200">{report.endDate}</span></span>
+                  ) : null}
+                </span>
+              </div>
+            )}
+          </div>
+
+          {/* Quick Metrics & Detailed Breakdown Recap (Khusus Non-Pengamanan) */}
+          {!isPengamanan ? (
+            <div className="space-y-2">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                <div className="bg-cyan-950/30 border border-cyan-500/30 p-3 rounded-xl">
+                  <span className="text-[10px] uppercase font-mono-cyber text-cyan-300 block mb-1">
+                    Total Sipil Hari Ini
+                  </span>
+                  <div className="text-lg font-bold font-mono-cyber text-white">
+                    {report.totalProgressSipil || '0'} <span className="text-xs font-normal text-cyan-400">m</span>
+                  </div>
+                </div>
+                <div className="bg-emerald-950/30 border border-emerald-500/30 p-3 rounded-xl">
+                  <span className="text-[10px] uppercase font-mono-cyber text-emerald-300 block mb-1">
+                    Total Kabel Hari Ini
+                  </span>
+                  <div className="text-lg font-bold font-mono-cyber text-white">
+                    {report.totalProgressKabel || '0'} <span className="text-xs font-normal text-emerald-400">m</span>
+                  </div>
+                </div>
+                <div className="bg-blue-950/30 border border-blue-500/30 p-3 rounded-xl">
+                  <span className="text-[10px] uppercase font-mono-cyber text-blue-300 block mb-1">
+                    Total Kabel Coax
+                  </span>
+                  <div className="text-lg font-bold font-mono-cyber text-white">
+                    {report.totalProgressKabelCoax || report.pulling?.pullingCoax || '0'} <span className="text-xs font-normal text-blue-400">m</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Pit Metrics: HH, HB, MH */}
+              <div className="grid grid-cols-3 gap-2">
+                <div className="bg-amber-950/25 border border-amber-500/30 p-2.5 rounded-xl">
+                  <span className="text-[9px] sm:text-[10px] uppercase font-mono-cyber text-amber-300 block mb-0.5">
+                    Total HH
+                  </span>
+                  <div className="text-base font-bold font-mono-cyber text-white">
+                    {displayHH} <span className="text-xs font-normal text-amber-400">Pcs</span>
+                  </div>
+                </div>
+                <div className="bg-orange-950/25 border border-orange-500/30 p-2.5 rounded-xl">
+                  <span className="text-[9px] sm:text-[10px] uppercase font-mono-cyber text-orange-300 block mb-0.5">
+                    Total HB
+                  </span>
+                  <div className="text-base font-bold font-mono-cyber text-white">
+                    {displayHB} <span className="text-xs font-normal text-orange-400">Pcs</span>
+                  </div>
+                </div>
+                <div className="bg-purple-950/25 border border-purple-500/30 p-2.5 rounded-xl">
+                  <span className="text-[9px] sm:text-[10px] uppercase font-mono-cyber text-purple-300 block mb-0.5">
+                    Total MH
+                  </span>
+                  <div className="text-base font-bold font-mono-cyber text-white">
+                    {displayMH} <span className="text-xs font-normal text-purple-400">Pcs</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Detailed Breakdown Recap */}
+              <div className="bg-[#050b14] p-3 rounded-xl border border-slate-800 space-y-2">
+                <h4 className="font-cyber font-semibold text-slate-200 text-xs flex items-center justify-between">
+                  <span>Rincian Item Pekerjaan</span>
+                  <span className="text-[10px] font-mono-cyber text-emerald-400">VERIFIED</span>
+                </h4>
+                
+                <div className="space-y-1.5 text-[11px] font-mono-cyber">
+                  <div className="flex justify-between py-1 border-b border-slate-800/60">
+                    <span className="text-slate-400">I. Pekerjaan Boring:</span>
+                    <span className="text-cyan-300 font-semibold">{totalBoring} meter</span>
+                  </div>
+                  <div className="flex justify-between py-1 border-b border-slate-800/60">
+                    <span className="text-slate-400">II. Penarikan Kabel FO:</span>
+                    <span className="text-emerald-300 font-semibold">{totalPulling} meter</span>
+                  </div>
+                  <div className="flex justify-between py-1 border-b border-slate-800/60">
+                    <span className="text-slate-400">   • Kabel Coaxial:</span>
+                    <span className="text-blue-300 font-semibold">{report.pulling?.pullingCoax || report.totalProgressKabelCoax || 0} meter</span>
+                  </div>
+                  <div className="flex justify-between py-1 border-b border-slate-800/60">
+                    <span className="text-slate-400">III. Total Pit (HH,HB,MH,MB):</span>
+                    <span className="text-amber-300 font-semibold">{totalPit} Pcs</span>
+                  </div>
+                  <div className="flex justify-between py-1 border-b border-slate-800/60">
+                    <span className="text-slate-400">IV. Tiang Bersama:</span>
+                    <span className="text-slate-200">{report.tiangGalvanisHDPE.tiangBersama || 0} Pcs</span>
+                  </div>
+                  {(report.tiangGalvanisHDPE.galvanis2Inch || (report.tiangGalvanisHDPE.galvanisATB ?? report.tiangGalvanisHDPE.galvanis4Inch)) ? (
+                    <div className="flex justify-between py-1 border-b border-slate-800/60">
+                      <span className="text-slate-400">   • Pipa Galvanis:</span>
+                      <span className="text-slate-200">
+                        {[
+                          report.tiangGalvanisHDPE.galvanis2Inch ? `2": ${report.tiangGalvanisHDPE.galvanis2Inch}m` : '',
+                          (report.tiangGalvanisHDPE.galvanisATB ?? report.tiangGalvanisHDPE.galvanis4Inch)
+                            ? `ATB (${report.tiangGalvanisHDPE.galvanisATBOption || 'Galv 4"'}): ${report.tiangGalvanisHDPE.galvanisATB ?? report.tiangGalvanisHDPE.galvanis4Inch}m`
+                            : '',
+                        ].filter(Boolean).join(', ')}
+                      </span>
+                    </div>
+                  ) : null}
+                  <div className="flex justify-between py-1">
+                    <span className="text-slate-400">V. Dismantling Kabel:</span>
+                    <span className="text-slate-200">{report.dismantling.dismantleKabel || 0} m</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="p-3.5 rounded-xl bg-amber-950/30 border border-amber-500/40 flex items-start gap-2.5 text-xs font-mono-cyber text-amber-200">
+              <Shield className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+              <div>
+                <span className="font-bold font-cyber text-amber-300 block mb-0.5">Project Kategori Pengamanan</span>
+                <span className="text-slate-300 text-[11px] leading-relaxed">
+                  Laporan pengawasan aset jaringan & utilitas. Item penarikan kabel, instalasi pit, tiang/galvanis/HDPE, dan dismantling dirangkum di dalam Remarks.
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* Remarks Section */}
+          <div className="bg-[#050b14] p-3.5 rounded-xl border border-purple-500/30 space-y-2">
+            <span className="text-[10px] uppercase font-mono-cyber text-purple-300 font-semibold block mb-1">
+              Remarks {isPengamanan ? '& Rincian Item Pekerjaan' : '/ Catatan Pekerjaan'}
+            </span>
+
+            {isPengamanan && (
+              <div className="bg-purple-950/20 border border-purple-500/20 rounded-lg p-2.5 space-y-1 text-xs font-mono-cyber">
+                <div className="flex justify-between py-0.5 border-b border-purple-500/10 text-slate-300">
+                  <span className="text-slate-400">• Penarikan Kabel / Pulling:</span>
+                  <span className="text-emerald-300 font-semibold">
+                    {totalPulling || report.totalProgressKabel || 0} m
+                    {report.pulling?.pullingCoax ? ` (Coax: ${report.pulling.pullingCoax}m)` : ''}
+                  </span>
+                </div>
+                <div className="flex justify-between py-0.5 border-b border-purple-500/10 text-slate-300">
+                  <span className="text-slate-400">• Instalasi Pit (HH, HB, MH):</span>
+                  <span className="text-amber-300 font-semibold">
+                    HH {report.totalProgressHH || totalHH || 0} Pcs, HB {report.totalProgressHB || totalHB || 0} Pcs, MH {report.totalProgressMH || totalMH || 0} Pcs
+                  </span>
+                </div>
+                <div className="flex justify-between py-0.5 border-b border-purple-500/10 text-slate-300">
+                  <span className="text-slate-400">• Tiang, Galvanis & HDPE:</span>
+                  <span className="text-cyan-300 font-semibold">
+                    Tiang {report.tiangGalvanisHDPE?.tiangBersama || 0} Pcs, Galv {[report.tiangGalvanisHDPE?.galvanis2Inch ? `2": ${report.tiangGalvanisHDPE.galvanis2Inch}m` : '', (report.tiangGalvanisHDPE?.galvanisATB ?? report.tiangGalvanisHDPE?.galvanis4Inch) ? `ATB: ${report.tiangGalvanisHDPE?.galvanisATB ?? report.tiangGalvanisHDPE?.galvanis4Inch}m` : ''].filter(Boolean).join(', ') || '0m'}, HDPE {report.tiangGalvanisHDPE?.instalHDPE || 0}m
+                  </span>
+                </div>
+                <div className="flex justify-between py-0.5 text-slate-300">
+                  <span className="text-slate-400">• Dismantling (Bongkar):</span>
+                  <span className="text-rose-300 font-semibold">
+                    Kabel {report.dismantling?.dismantleKabel || 0} m, Tiang {report.dismantling?.dismantleTiang || 0} Pcs
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {report.remarks && (
+              <p className="text-xs text-slate-200 leading-relaxed whitespace-pre-wrap pt-1">
+                {report.remarks}
+              </p>
+            )}
+          </div>
+
+          {/* Field Issues Note */}
+          <div className="bg-[#050b14] p-3 rounded-xl border border-slate-800">
+            <span className="text-[10px] uppercase font-mono-cyber text-slate-400 block mb-1">
+              Kendala / Isu Lapangan
+            </span>
+            <p className="text-xs text-slate-200 italic leading-relaxed">
+              "{report.kendalaLapangan || 'Tidak ada kendala'}"
+            </p>
+          </div>
+
+          {/* Lampiran Berkas & Foto Lapangan (Hanya jika laporan memiliki berkas) */}
+          {report.attachments && report.attachments.length > 0 && (
+            <div className="bg-[#050b14] p-3.5 rounded-xl border border-cyan-500/20 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-cyber font-bold text-cyan-300 flex items-center gap-1.5">
+                  <Paperclip className="w-3.5 h-3.5 text-cyan-400" />
+                  <span>Lampiran Dokumen & Foto ({report.attachments.length})</span>
+                </span>
+                <span className="text-[10px] font-mono-cyber text-slate-400">
+                  Tersinkron Cloud
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                {report.attachments.map((file, idx) => (
+                  <div
+                    key={file.id || idx}
+                    className="flex items-center justify-between p-2 rounded-lg bg-[#081020] border border-slate-800 hover:border-slate-700 transition-colors"
+                  >
+                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                      <div className="w-8 h-8 rounded bg-slate-900 border border-slate-800 flex items-center justify-center shrink-0">
+                        {file.type === 'pdf' ? (
+                          <FileText className="w-4 h-4 text-red-400" />
+                        ) : (
+                          <ImageIcon className="w-4 h-4 text-cyan-400" />
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <span className="text-[11px] font-medium text-slate-200 truncate block">
+                          {file.name}
+                        </span>
+                        <span className="text-[9px] font-mono-cyber text-slate-400 uppercase">
+                          {file.type} • {file.compressedSize ? `${(file.compressedSize / 1024).toFixed(0)} KB` : file.size ? `${(file.size / 1024).toFixed(0)} KB` : 'Cloud'}
+                          {file.compressionRatio && file.compressionRatio !== '0%' && (
+                            <span className="text-emerald-400 ml-1">({file.compressionRatio})</span>
+                          )}
+                        </span>
+                      </div>
+                    </div>
+                    {file.url && (
+                      <a
+                        href={file.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="p-1.5 rounded-md bg-slate-800 hover:bg-cyan-950 text-slate-300 hover:text-cyan-300 border border-slate-700 transition-colors shrink-0 ml-1.5"
+                        title="Buka / Download Berkas"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                      </a>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* WhatsApp Direct Share Box */}
+          <div className="p-3.5 rounded-xl bg-emerald-950/40 border border-emerald-500/40 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-cyber font-bold text-emerald-300 flex items-center gap-1.5">
+                <Share2 className="w-4 h-4 text-emerald-400" />
+                <span>Kirim Laporan via WhatsApp</span>
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowPhoneInput(!showPhoneInput)}
+                className="text-[10px] font-mono-cyber text-emerald-400 hover:text-emerald-300 underline"
+              >
+                {showPhoneInput ? 'Sembunyikan Nomor' : '+ Target Nomor'}
+              </button>
+            </div>
+
+            {showPhoneInput && (
+              <div className="space-y-1 animate-fadeIn">
+                <label className="text-[10px] font-mono-cyber text-slate-300 flex items-center gap-1">
+                  <Phone className="w-3 h-3 text-emerald-400" />
+                  <span>Nomor WhatsApp Tujuan (opsional, contoh: 08123456789)</span>
+                </label>
+                <input
+                  type="tel"
+                  value={whatsappPhone}
+                  onChange={(e) => setWhatsappPhone(e.target.value)}
+                  placeholder="08xxxxxxxxxx atau kosongkan untuk pilih kontak di WA"
+                  className="w-full bg-[#050b14] border border-emerald-500/50 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono-cyber focus:outline-none"
+                />
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={handleShareWA}
+              className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-400 hover:to-green-500 text-slate-950 font-bold font-cyber text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/30 active:scale-[0.99] transition-all cursor-pointer"
+            >
+              <MessageSquare className="w-4 h-4 text-slate-950" />
+              <span>Buka & Kirim WhatsApp Sekarang</span>
+            </button>
+            <p className="text-[10px] text-center text-emerald-400/80 font-mono-cyber mt-1">
+              ✓ WhatsApp akan terbuka & otomatis kembali ke tampilan aplikasi form laporan
+            </p>
+          </div>
+
+        </div>
+
+        {/* Modal Footer Actions */}
+        <div className="p-4 bg-[#070e1c] border-t border-slate-800 flex flex-col gap-2 shrink-0">
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={handleCopySummary}
+              className="py-2.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-cyan-500/30 text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+            >
+              {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+              <span>{copied ? 'Tersalin!' : 'Salin Teks'}</span>
+            </button>
+
+            {onEditReport ? (
+              canModify ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onEditReport(report);
+                    onClose();
+                  }}
+                  className="py-2.5 px-3 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                  title={isAdmin ? "Edit Laporan (Akses Penuh Admin)" : "Edit Laporan Anda"}
+                >
+                  <Edit3 className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Edit Laporan Ini</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  disabled
+                  className="py-2.5 px-3 rounded-xl bg-slate-900 border border-slate-800 text-slate-600 text-xs font-semibold flex items-center justify-center gap-1.5 cursor-not-allowed opacity-60"
+                  title={`Edit Terkunci: Dibuat oleh ${author}. Hanya pembuat atau Admin yang berhak menyunting.`}
+                >
+                  <Lock className="w-3.5 h-3.5 text-slate-600" />
+                  <span>Edit Terkunci</span>
+                </button>
+              )
+            ) : null}
+          </div>
+
+          {/* Konfirmasi Hapus Laporan dari Modal */}
+          {confirmDelete && (
+            <div className="p-3 rounded-xl bg-red-950/90 border border-red-500/80 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2 animate-fadeIn">
+              <span className="text-red-200">Hapus laporan ini secara permanen dari riwayat & cloud?</span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (onDeleteReport && report.id) {
+                      onDeleteReport(report.id);
+                    }
+                    onClose();
+                  }}
+                  className="px-3 py-1 rounded-lg bg-red-600 hover:bg-red-500 text-white font-bold text-xs cursor-pointer shadow"
+                >
+                  Ya, Hapus Sekarang
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfirmDelete(false)}
+                  className="px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs cursor-pointer"
+                >
+                  Batal
+                </button>
+              </div>
+            </div>
+          )}
+
+          {!canModify && (
+            <div className="text-[10px] text-red-300/80 bg-red-950/40 border border-red-500/30 rounded-lg p-2 flex items-center gap-1.5 font-mono-cyber">
+              <Lock className="w-3 h-3 text-red-400 shrink-0" />
+              <span>Proteksi Data: Mode baca saja. Hanya pembuat ({author || 'user terkait'}) atau Admin yang dapat mengedit.</span>
+            </div>
+          )}
+
+          <div className="flex items-center justify-between pt-1 flex-wrap gap-2">
+            <div className="flex items-center gap-3">
+              {onDeleteReport && canModify && !confirmDelete && (
+                <button
+                  type="button"
+                  onClick={() => setConfirmDelete(true)}
+                  className="text-[11px] text-red-400 hover:text-red-300 font-mono-cyber flex items-center gap-1 cursor-pointer"
+                  title="Hapus Laporan Ini"
+                >
+                  <Trash2 className="w-3 h-3" />
+                  <span>Hapus Laporan</span>
+                </button>
+              )}
+            </div>
+
+            <button
+              type="button"
+              onClick={onClose}
+              className="text-xs text-slate-300 hover:text-cyan-300 py-1 font-mono-cyber cursor-pointer flex items-center gap-1.5 transition-colors active:scale-95"
+              title="Kembali ke formulir laporan"
+            >
+              <ArrowLeft className="w-3.5 h-3.5 text-cyan-400" />
+              <span>Kembali</span>
+            </button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  );
+};

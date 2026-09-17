@@ -1,0 +1,3218 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { 
+  Building2, 
+  Calendar, 
+  Clock,
+  CloudSun, 
+  Layers, 
+  Cable, 
+  Boxes, 
+  Zap, 
+  Trash2, 
+  AlertCircle, 
+  Calculator,
+  ChevronDown,
+  ChevronUp,
+  Send,
+  Sparkles,
+  Info,
+  FolderPlus,
+  Edit3,
+  Check,
+  UserCheck,
+  Hash,
+  Eraser,
+  Lock,
+  MapPin,
+  ArrowLeft,
+  Shield,
+  Building,
+  Construction,
+  GitMerge,
+  Waves,
+  Route,
+  Footprints,
+  Wrench,
+  FileText
+} from 'lucide-react';
+import { 
+  DailyReportFormData, 
+  ProjectItem, 
+  ProjectCategory, 
+  JenisPengamanan, 
+  SubJenisPerapihanAsset,
+  PullingProgress,
+  HHProgress,
+  HBProgress,
+  MHProgress
+} from '../types';
+import { 
+  WEATHER_OPTIONS, 
+  AREA_OPTIONS, 
+  PROJECT_RELOKASI_GOVERNMENT, 
+  PROJECT_CATEGORIES,
+  JENIS_PENGAMANAN_OPTIONS,
+  SUB_JENIS_PERAPIHAN_ASSET_OPTIONS
+} from '../data';
+import { AccordionSection } from './AccordionSection';
+
+/**
+ * Safely parses a YYYY-MM-DD string into a UTC midnight Date object
+ * to prevent timezone-related off-by-one errors.
+ */
+const parseDateSafely = (dateStr?: string): Date | null => {
+  if (!dateStr || typeof dateStr !== 'string') return null;
+  const parts = dateStr.trim().split('-');
+  if (parts.length !== 3) return null;
+  const year = parseInt(parts[0], 10);
+  const month = parseInt(parts[1], 10) - 1;
+  const day = parseInt(parts[2], 10);
+  if (isNaN(year) || isNaN(month) || isNaN(day)) return null;
+  if (year < 1970 || year > 2150 || month < 0 || month > 11 || day < 1 || day > 31) return null;
+  const dt = new Date(Date.UTC(year, month, day));
+  return isNaN(dt.getTime()) ? null : dt;
+};
+
+/**
+ * Calculates day difference using standard JavaScript Date:
+ * Math.floor((dateLaporan - dateStart) / (1000 * 60 * 60 * 24)) + 1
+ * Clamps to minimum 1 if dateLaporan is earlier than dateStart, and flags isNegative.
+ */
+const calculateDaysDiff = (
+  reportDateStr?: string, 
+  startDateStr?: string
+): { days: number; rawDiff: number; isNegative: boolean } | null => {
+  const dateLaporan = parseDateSafely(reportDateStr);
+  const dateStart = parseDateSafely(startDateStr);
+  if (!dateLaporan || !dateStart) return null;
+
+  const diffMs = dateLaporan.getTime() - dateStart.getTime();
+  const rawDiff = Math.floor(diffMs / (1000 * 60 * 60 * 24)) + 1;
+  if (isNaN(rawDiff)) return null;
+
+  const isNegative = rawDiff < 1;
+  const days = isNegative ? 1 : rawDiff;
+  return { days, rawDiff, isNegative };
+};
+
+// Tetapkan Konstanta Durasi: angka pasti 90 sebagai total durasi master paten
+const TOTAL_DURASI_MASTER = 90;
+
+interface DailyReportFormProps {
+  formData: DailyReportFormData;
+  onChange: (data: DailyReportFormData) => void;
+  onSubmit: (e: React.FormEvent) => void;
+  projects?: ProjectItem[];
+  onOpenProjectManagement?: () => void;
+  onOpenClearScreen?: () => void;
+  isEditing?: boolean;
+  onCancelEdit?: () => void;
+  onDeleteCurrentReport?: () => void;
+}
+
+const FO_CABLE_OPTIONS: { key: keyof PullingProgress; label: string }[] = [
+  { key: 'pulling288', label: '288' },
+  { key: 'pulling288GL', label: '288 GL' },
+  { key: 'pulling144', label: '144' },
+  { key: 'pulling144GL', label: '144 GL' },
+  { key: 'pulling96', label: '96' },
+  { key: 'pulling96GL', label: '96 GL' },
+  { key: 'pulling48', label: '48' },
+  { key: 'pulling24', label: '24' },
+  { key: 'pulling12', label: '12' },
+];
+
+const PIT_SIZE_OPTIONS = [
+  { id: '60x60', label: '60x60' },
+  { id: '80x80', label: '80x80' },
+  { id: '100x100', label: '100x100' },
+  { id: '110x110', label: '110x110' },
+  { id: '120x120', label: '120x120' },
+] as const;
+
+export const DailyReportForm: React.FC<DailyReportFormProps> = ({
+  formData,
+  onChange,
+  onSubmit,
+  projects = [],
+  onOpenProjectManagement,
+  onOpenClearScreen,
+  isEditing,
+  onCancelEdit,
+  onDeleteCurrentReport,
+}) => {
+  // Local state for Remarks Pengamanan options selector
+  const [selectedRemarksFO, setSelectedRemarksFO] = useState<keyof PullingProgress>('pulling96');
+  const [selectedRemarksHH, setSelectedRemarksHH] = useState<keyof HHProgress>('hh80x80');
+  const [selectedRemarksHB, setSelectedRemarksHB] = useState<keyof HBProgress>('hb80x80');
+  const [selectedRemarksMH, setSelectedRemarksMH] = useState<keyof MHProgress>('mh80x80');
+
+  // Accordion toggle states
+  const [openAccordions, setOpenAccordions] = useState<{ [key: string]: boolean }>({
+    boring: true,
+    pulling: true,
+    pits: true,
+    tiangHdpe: false,
+    dismantling: false,
+  });
+
+  const [validationError, setValidationError] = useState<string | null>(null);
+  const [confirmDeleteCurrent, setConfirmDeleteCurrent] = useState<boolean>(false);
+
+  const toggleAccordion = (key: string) => {
+    setOpenAccordions((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const toggleAllAccordions = (open: boolean) => {
+    setOpenAccordions({
+      boring: open,
+      pulling: open,
+      pits: open,
+      tiangHdpe: open,
+      dismantling: open,
+    });
+  };
+
+  const handleNavigateSection = (sectionId: string, accordionKey?: string) => {
+    if (accordionKey) {
+      setOpenAccordions((prev) => ({ ...prev, [accordionKey]: true }));
+    }
+    const element = document.getElementById(sectionId);
+    if (element) {
+      element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  };
+
+  // Subtotal calculations for HH, HB, MH, MB
+  const totalHH = 
+    (parseFloat(formData.instalasiHH.hh60x60) || 0) +
+    (parseFloat(formData.instalasiHH.hh80x80) || 0) +
+    (parseFloat(formData.instalasiHH.hh100x100) || 0) +
+    (parseFloat(formData.instalasiHH.hh110x110 || '0') || 0) +
+    (parseFloat(formData.instalasiHH.hh120x120) || 0);
+
+  const totalHB = 
+    (parseFloat(formData.instalasiHB.hb60x60) || 0) +
+    (parseFloat(formData.instalasiHB.hb80x80) || 0) +
+    (parseFloat(formData.instalasiHB.hb100x100) || 0) +
+    (parseFloat(formData.instalasiHB.hb110x110 || '0') || 0) +
+    (parseFloat(formData.instalasiHB.hb120x120) || 0);
+
+  const totalMH = 
+    (parseFloat(formData.instalasiMH.mh60x60 || '0') || 0) +
+    (parseFloat(formData.instalasiMH.mh80x80) || 0) +
+    (parseFloat(formData.instalasiMH.mh100x100) || 0) +
+    (parseFloat(formData.instalasiMH.mh110x110 || '0') || 0) +
+    (parseFloat(formData.instalasiMH.mh120x120) || 0);
+
+  const totalMB = 
+    (parseFloat(formData.instalasiMB.mb80x80) || 0) +
+    (parseFloat(formData.instalasiMB.mb100x100) || 0) +
+    (parseFloat(formData.instalasiMB.mb120x120) || 0);
+
+  // Section summary metrics for badges
+  const totalBoringMeters = 
+    (parseFloat(formData.boring.boringAlur) || 0) +
+    (parseFloat(formData.boring.boringCrossingJalan) || 0) +
+    (parseFloat(formData.boring.boringAkses || formData.boring.boringCrossingJalanTol || '0') || 0) +
+    (parseFloat(formData.boring.boringCrossingJembatan) || 0);
+
+  const totalPullingMeters = 
+    (parseFloat(formData.pulling.pulling288) || 0) +
+    (parseFloat(formData.pulling.pulling288GL) || 0) +
+    (parseFloat(formData.pulling.pulling144) || 0) +
+    (parseFloat(formData.pulling.pulling144GL || '0') || 0) +
+    (parseFloat(formData.pulling.pulling96) || 0) +
+    (parseFloat(formData.pulling.pulling96GL) || 0) +
+    (parseFloat(formData.pulling.pulling48) || 0) +
+    (parseFloat(formData.pulling.pulling24) || 0) +
+    (parseFloat(formData.pulling.pulling12 || '0') || 0);
+
+  const totalPullingCoaxMeters = parseFloat(formData.pulling?.pullingCoax || '0') || 0;
+
+  const totalPitsCombined = totalHH + totalHB + totalMH + totalMB;
+
+  // Helper to format numeric strings cleanly
+  const formatTotalValue = (val: number): string => {
+    if (isNaN(val) || val <= 0) return '0';
+    return Number.isInteger(val) ? val.toString() : parseFloat(val.toFixed(2)).toString();
+  };
+
+  // 1. State Peringatan (Overdue) dan Simpan ref ke formData untuk mencegah infinite loop
+  const [isOverdue, setIsOverdue] = useState<boolean>(() => {
+    const initHariKe = parseInt(formData.dayNumber || '1', 10);
+    return !isNaN(initHariKe) && initHariKe > TOTAL_DURASI_MASTER;
+  });
+
+  const formDataRef = useRef(formData);
+  formDataRef.current = formData;
+
+  // Parsing hariKe secara aman (minimal 1, hindari NaN atau minus)
+  const rawHariKe = parseInt(formData.dayNumber || '1', 10);
+  const hariKe = !isNaN(rawHariKe) && rawHariKe >= 1 ? rawHariKe : 1;
+
+  // 2. Kalkulasi Sisa Durasi yang Aman & State Peringatan (Overdue)
+  // Hanya memantau dependensi [hariKe] sesuai instruksi paten
+  useEffect(() => {
+    const sisa = TOTAL_DURASI_MASTER - hariKe;
+    const computedSisa = Math.max(0, sisa);
+    const computedSisaStr = computedSisa.toString();
+
+    // Kondisi Overdue jika hariKe > TOTAL_DURASI_MASTER
+    if (hariKe > TOTAL_DURASI_MASTER) {
+      setIsOverdue(true);
+    } else {
+      setIsOverdue(false);
+    }
+
+    // Update state sisa durasi (durasiPekerjaan) jika nilainya belum sinkron
+    if (
+      formDataRef.current.durasiPekerjaan !== computedSisaStr ||
+      formDataRef.current.totalDurasi !== TOTAL_DURASI_MASTER.toString()
+    ) {
+      onChange({
+        ...formDataRef.current,
+        durasiPekerjaan: computedSisaStr,
+        totalDurasi: TOTAL_DURASI_MASTER.toString(),
+      });
+    }
+  }, [hariKe]);
+
+  // 3. Perhitungan Otomatis Hari Ke- (Tracker) saat Tanggal Laporan / Start Project berubah
+  const lastSyncedDatesRef = useRef<{ reportDate: string; startDate: string }>({
+    reportDate: '',
+    startDate: '',
+  });
+
+  useEffect(() => {
+    const diffInfo = calculateDaysDiff(formData.reportDate, formData.startDate);
+    if (!diffInfo) return;
+
+    const datesChanged =
+      lastSyncedDatesRef.current.reportDate !== formData.reportDate ||
+      lastSyncedDatesRef.current.startDate !== formData.startDate;
+
+    if (datesChanged) {
+      lastSyncedDatesRef.current = {
+        reportDate: formData.reportDate,
+        startDate: formData.startDate,
+      };
+
+      const calculatedDayStr = diffInfo.days.toString();
+      if (formDataRef.current.dayNumber !== calculatedDayStr) {
+        onChange({
+          ...formDataRef.current,
+          dayNumber: calculatedDayStr,
+        });
+      }
+    }
+  }, [formData.reportDate, formData.startDate]);
+
+  const handleSyncHariKeFromDates = () => {
+    const diffInfo = calculateDaysDiff(formData.reportDate, formData.startDate);
+    if (!diffInfo) return;
+
+    const calculatedDayStr = diffInfo.days.toString();
+    lastSyncedDatesRef.current = {
+      reportDate: formData.reportDate,
+      startDate: formData.startDate,
+    };
+
+    const sisa = Math.max(0, TOTAL_DURASI_MASTER - diffInfo.days);
+
+    onChange({
+      ...formData,
+      dayNumber: calculatedDayStr,
+      durasiPekerjaan: sisa.toString(),
+      totalDurasi: TOTAL_DURASI_MASTER.toString(),
+    });
+  };
+
+  // Helper to update top-level keys
+  const handleTopLevelChange = (field: keyof DailyReportFormData, value: string) => {
+    if (validationError) setValidationError(null);
+
+    // Ketika hari ke (tracker) diubah, update dayNumber dan langsung hitung sisa durasi dari TOTAL_DURASI_MASTER
+    if (field === 'dayNumber') {
+      const newDay = parseInt(value, 10);
+      const validDay = !isNaN(newDay) && newDay >= 1 ? newDay : 1;
+      const sisa = Math.max(0, TOTAL_DURASI_MASTER - validDay);
+
+      onChange({
+        ...formData,
+        dayNumber: value,
+        durasiPekerjaan: sisa.toString(),
+        totalDurasi: TOTAL_DURASI_MASTER.toString(),
+      });
+      return;
+    }
+
+    // Durasi pekerjaan otomatis dikunci dan dihitung dari acuan paten 90 hari
+    if (field === 'durasiPekerjaan') {
+      return;
+    }
+
+    onChange({
+      ...formData,
+      [field]: value,
+    });
+  };
+
+  // Helper to update nested object fields: Key Totals terakumulasi otomatis dari Rincian Progres yang diinput
+  const handleNestedChange = <T extends keyof DailyReportFormData>(
+    section: T,
+    subField: keyof DailyReportFormData[T],
+    value: string
+  ) => {
+    // 1. Boring -> Ringkasan Pencapaian: Total Progress Sipil terakumulasi otomatis dari rincian boring
+    if (section === 'boring') {
+      const newBoring = {
+        ...formData.boring,
+        [subField]: value,
+      };
+      if (subField === 'boringAkses') {
+        newBoring.boringCrossingJalanTol = value;
+      }
+      const newBoringTotal =
+        (parseFloat(newBoring.boringAlur) || 0) +
+        (parseFloat(newBoring.boringCrossingJalan) || 0) +
+        (parseFloat(newBoring.boringAkses || newBoring.boringCrossingJalanTol || '0') || 0) +
+        (parseFloat(newBoring.boringCrossingJembatan) || 0);
+
+      onChange({
+        ...formData,
+        boring: newBoring,
+        totalProgressSipil: formatTotalValue(newBoringTotal),
+      });
+      return;
+    }
+
+    // 2. Pulling -> Ringkasan Pencapaian: Total Progress Kabel terakumulasi otomatis dari rincian pulling kabel
+    if (section === 'pulling') {
+      const newPulling = {
+        ...formData.pulling,
+        [subField]: value,
+      };
+      const newPullingTotal =
+        (parseFloat(newPulling.pulling288) || 0) +
+        (parseFloat(newPulling.pulling288GL) || 0) +
+        (parseFloat(newPulling.pulling144) || 0) +
+        (parseFloat(newPulling.pulling144GL || '0') || 0) +
+        (parseFloat(newPulling.pulling96) || 0) +
+        (parseFloat(newPulling.pulling96GL) || 0) +
+        (parseFloat(newPulling.pulling48) || 0) +
+        (parseFloat(newPulling.pulling24) || 0) +
+        (parseFloat(newPulling.pulling12 || '0') || 0);
+
+      const newCoaxTotal = parseFloat(newPulling.pullingCoax || '0') || 0;
+
+      onChange({
+        ...formData,
+        pulling: newPulling,
+        totalProgressKabel: formatTotalValue(newPullingTotal),
+        totalProgressKabelCoax: formatTotalValue(newCoaxTotal),
+      });
+      return;
+    }
+
+    // 3. Instalasi HH -> Ringkasan Pencapaian: Total HH terakumulasi otomatis dari rincian handhole
+    if (section === 'instalasiHH') {
+      const newHH = {
+        ...formData.instalasiHH,
+        [subField]: value,
+      };
+      const newHHTotal =
+        (parseFloat(newHH.hh60x60) || 0) +
+        (parseFloat(newHH.hh80x80) || 0) +
+        (parseFloat(newHH.hh100x100) || 0) +
+        (parseFloat(newHH.hh110x110 || '0') || 0) +
+        (parseFloat(newHH.hh120x120) || 0);
+
+      onChange({
+        ...formData,
+        instalasiHH: newHH,
+        totalProgressHH: formatTotalValue(newHHTotal),
+      });
+      return;
+    }
+
+    // 4. Instalasi HB -> Ringkasan Pencapaian: Total HB terakumulasi otomatis dari rincian handbox
+    if (section === 'instalasiHB') {
+      const newHB = {
+        ...formData.instalasiHB,
+        [subField]: value,
+      };
+      const newHBTotal =
+        (parseFloat(newHB.hb60x60) || 0) +
+        (parseFloat(newHB.hb80x80) || 0) +
+        (parseFloat(newHB.hb100x100) || 0) +
+        (parseFloat(newHB.hb110x110 || '0') || 0) +
+        (parseFloat(newHB.hb120x120) || 0);
+
+      onChange({
+        ...formData,
+        instalasiHB: newHB,
+        totalProgressHB: formatTotalValue(newHBTotal),
+      });
+      return;
+    }
+
+    // 5. Instalasi MH -> Ringkasan Pencapaian: Total MH terakumulasi otomatis dari rincian manhole
+    if (section === 'instalasiMH') {
+      const newMH = {
+        ...formData.instalasiMH,
+        [subField]: value,
+      };
+      const newMHTotal =
+        (parseFloat(newMH.mh60x60 || '0') || 0) +
+        (parseFloat(newMH.mh80x80) || 0) +
+        (parseFloat(newMH.mh100x100) || 0) +
+        (parseFloat(newMH.mh110x110 || '0') || 0) +
+        (parseFloat(newMH.mh120x120) || 0);
+
+      onChange({
+        ...formData,
+        instalasiMH: newMH,
+        totalProgressMH: formatTotalValue(newMHTotal),
+      });
+      return;
+    }
+
+    onChange({
+      ...formData,
+      [section]: {
+        ...(formData[section] as Record<string, string>),
+        [subField]: value,
+      },
+    });
+  };
+
+  // Auto-sync helper: salin ulang total akumulasi dari rincian accordion
+  const handleAutoSyncTotals = () => {
+    onChange({
+      ...formData,
+      totalProgressSipil: formatTotalValue(totalBoringMeters),
+      totalProgressKabel: formatTotalValue(totalPullingMeters),
+      totalProgressKabelCoax: formatTotalValue(totalPullingCoaxMeters),
+      totalProgressHH: formatTotalValue(totalHH),
+      totalProgressHB: formatTotalValue(totalHB),
+      totalProgressMH: formatTotalValue(totalMH),
+    });
+  };
+
+  // 1. Identitas Project & Jadwal Pelaksanaan (Khusus Kategori Relokasi Goverment)
+  const renderIdentitasProject = () => {
+    const dateDiffInfo = calculateDaysDiff(formData.reportDate, formData.startDate);
+    const isDateBeforeStart = dateDiffInfo ? dateDiffInfo.isNegative : false;
+    const isHariKeSynced = dateDiffInfo ? formData.dayNumber === dateDiffInfo.days.toString() : false;
+
+    return (
+      <div className="bg-[#091224] border border-emerald-500/30 rounded-2xl p-4 sm:p-5 mb-5 shadow-xl shadow-emerald-950/20 space-y-4">
+        <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+          <div className="flex items-center gap-2">
+            <Building2 className="w-4 h-4 text-emerald-400" />
+            <h2 className="font-cyber font-bold text-sm tracking-wide text-white uppercase">
+              Identitas Project & Jadwal Pelaksanaan
+            </h2>
+            <span className="text-[10px] font-mono-cyber text-emerald-300 bg-emerald-950/80 px-2 py-0.5 rounded border border-emerald-500/30 font-semibold">
+              Relokasi Goverment
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            {onOpenClearScreen && (
+              <button
+                type="button"
+                onClick={onOpenClearScreen}
+                className="inline-flex items-center gap-1 text-[11px] font-mono-cyber px-2.5 py-1 rounded-lg bg-amber-950/80 text-amber-300 border border-amber-500/40 hover:bg-amber-900/80 transition-colors cursor-pointer font-semibold shadow-sm"
+                title="Bersihkan layar untuk input daily progress baru"
+              >
+                <Eraser className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                <span>Clear Screen</span>
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* 1. Input Project ID, Nama Project, Area & Nama Waspang */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+          {/* Project ID */}
+          <div>
+            <div className="flex items-center justify-between mb-1.5 h-5">
+              <label 
+                htmlFor="input-project-id" 
+                className="flex items-center gap-1.5 text-xs font-mono-cyber text-cyan-300 uppercase tracking-wider font-semibold truncate"
+              >
+                <Hash className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                <span className="truncate">Project ID</span>
+              </label>
+              {formData.projectId && (
+                <span className="text-[10px] font-mono-cyber text-cyan-300 bg-cyan-950/80 border border-cyan-500/40 px-1.5 py-0.2 rounded shrink-0">
+                  ID Aktif
+                </span>
+              )}
+            </div>
+            
+            <div className="relative">
+              <input
+                id="input-project-id"
+                type="text"
+                value={formData.projectId || ''}
+                onChange={(e) => handleTopLevelChange('projectId', e.target.value)}
+                placeholder="Contoh: PRJ-001"
+                className="w-full h-10 bg-[#050b14] border border-cyan-500/40 focus:border-cyan-400 rounded-xl px-3.5 text-xs sm:text-sm text-slate-100 font-mono-cyber focus:outline-none focus:ring-1 focus:ring-cyan-400 transition-colors"
+              />
+            </div>
+          </div>
+
+          {/* Input Nama Project Manual */}
+          <div>
+            <div className="flex items-center justify-between mb-1.5 h-5">
+              <label 
+                htmlFor="input-project-name" 
+                className="flex items-center gap-1.5 text-xs font-mono-cyber text-cyan-300 uppercase tracking-wider font-semibold truncate"
+              >
+                <Building2 className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                <span className="truncate">Nama Project <span className="text-amber-400">*</span></span>
+              </label>
+            </div>
+            
+            <div className="relative">
+              <input
+                id="input-project-name"
+                type="text"
+                required
+                value={formData.projectName}
+                onChange={(e) => handleTopLevelChange('projectName', e.target.value)}
+                placeholder="Masukkan nama project..."
+                className="w-full h-10 bg-[#050b14] border border-cyan-500/40 focus:border-cyan-400 rounded-xl px-3.5 text-xs sm:text-sm text-slate-100 font-mono-cyber focus:outline-none focus:ring-1 focus:ring-cyan-400 transition-colors"
+              />
+            </div>
+          </div>
+
+          {/* Input Area (Jabo 1, Jabo 2, Jabo 3) */}
+          <div>
+            <div className="flex items-center justify-between mb-1.5 h-5">
+              <label 
+                htmlFor="select-area" 
+                className="flex items-center gap-1.5 text-xs font-mono-cyber text-cyan-300 uppercase tracking-wider font-semibold truncate"
+              >
+                <MapPin className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                <span className="truncate">Area <span className="text-amber-400">*</span></span>
+              </label>
+              {formData.area && (
+                <span className="text-[10px] font-mono-cyber text-indigo-300 bg-indigo-950/80 border border-indigo-500/40 px-1.5 py-0.2 rounded shrink-0 font-bold">
+                  {formData.area}
+                </span>
+              )}
+            </div>
+            
+            <div className="relative flex items-center">
+              <select
+                id="select-area"
+                value={formData.area || 'Jabo 1'}
+                onChange={(e) => handleTopLevelChange('area', e.target.value)}
+                className="w-full h-10 appearance-none bg-[#050b14] border border-cyan-500/40 focus:border-cyan-400 rounded-xl px-3.5 text-xs sm:text-sm text-slate-100 font-mono-cyber font-semibold focus:outline-none focus:ring-1 focus:ring-cyan-400 pr-9 cursor-pointer transition-colors"
+              >
+                {AREA_OPTIONS.map((opt) => (
+                  <option key={opt} value={opt} className="bg-[#050b14] text-white">
+                    {opt}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="w-4 h-4 text-cyan-400 absolute right-3 pointer-events-none" />
+            </div>
+          </div>
+
+          {/* Input Nama Waspang */}
+          <div>
+            <div className="flex items-center justify-between mb-1.5 h-5">
+              <label 
+                htmlFor="input-waspang-name" 
+                className="flex items-center gap-1.5 text-xs font-mono-cyber text-cyan-300 uppercase tracking-wider font-semibold truncate"
+              >
+                <UserCheck className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                <span className="truncate">Waspang (Pengawas)</span>
+              </label>
+            </div>
+            
+            <div className="relative">
+              <input
+                id="input-waspang-name"
+                type="text"
+                value={formData.waspangName || ''}
+                onChange={(e) => handleTopLevelChange('waspangName', e.target.value)}
+                placeholder="Nama waspang / pengawas lapangan..."
+                className="w-full h-10 bg-[#050b14] border border-cyan-500/40 focus:border-cyan-400 rounded-xl px-3.5 text-xs sm:text-sm text-slate-100 font-mono-cyber focus:outline-none focus:ring-1 focus:ring-cyan-400 transition-colors"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* 2. Input Daily Perhari: Tanggal Laporan, Hari Ke-, dan Kondisi Cuaca */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+          {/* Tanggal Laporan */}
+          <div className="flex flex-col">
+            <label 
+              htmlFor="input-report-date" 
+              className="h-5 flex items-center gap-1.5 text-xs font-mono-cyber text-slate-300 uppercase tracking-wider mb-1.5"
+            >
+              <Calendar className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+              <span className="truncate">Tanggal Laporan</span>
+            </label>
+            <div className="relative flex items-center">
+              <input
+                id="input-report-date"
+                type="date"
+                value={formData.reportDate}
+                onChange={(e) => handleTopLevelChange('reportDate', e.target.value)}
+                className="w-full h-10 bg-[#050b14] border border-slate-700/80 focus:border-cyan-400 rounded-xl px-3 text-xs sm:text-sm text-slate-100 font-mono-cyber focus:outline-none focus:ring-1 focus:ring-cyan-400 transition-colors"
+              />
+            </div>
+            <span className="text-[10px] text-slate-500 mt-1 font-mono-cyber leading-tight">
+              Tanggal pelaksanaan pekerjaan
+            </span>
+          </div>
+
+          {/* Input Hari ke- (Daily Progress Counter) */}
+          <div className="flex flex-col">
+            <div className="h-5 flex items-center justify-between mb-1.5">
+              <label 
+                htmlFor="input-day-number" 
+                className="flex items-center gap-1.5 text-xs font-mono-cyber text-slate-300 uppercase tracking-wider truncate"
+              >
+                <Clock className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                <span className="truncate">Hari Ke- (Tracker)</span>
+              </label>
+              {dateDiffInfo && (
+                isHariKeSynced ? (
+                  <span 
+                    className="text-[10px] font-mono-cyber text-emerald-400 bg-emerald-950/70 border border-emerald-500/30 px-1.5 py-0.5 rounded flex items-center gap-1 shrink-0"
+                    title="Hari Ke- dihitung otomatis dari selisih Tanggal Laporan dan Start Project"
+                  >
+                    <Sparkles className="w-2.5 h-2.5" />
+                    Auto: H+{dateDiffInfo.days}
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleSyncHariKeFromDates}
+                    className="text-[10px] font-mono-cyber text-cyan-400 hover:text-cyan-300 bg-cyan-950/70 border border-cyan-500/40 px-1.5 py-0.5 rounded flex items-center gap-1 shrink-0 transition-colors cursor-pointer"
+                    title="Klik untuk sinkronkan kembali sesuai selisih tanggal laporan"
+                  >
+                    <Sparkles className="w-2.5 h-2.5" />
+                    Sinkron H+{dateDiffInfo.days}
+                  </button>
+                )
+              )}
+            </div>
+            <div className="relative flex items-center">
+              <input
+                id="input-day-number"
+                type="number"
+                min="1"
+                value={formData.dayNumber || '1'}
+                onChange={(e) => handleTopLevelChange('dayNumber', e.target.value)}
+                placeholder="1"
+                className="w-full h-10 bg-[#050b14] border border-slate-700/80 focus:border-cyan-400 rounded-xl pl-3 pr-14 text-xs sm:text-sm text-slate-100 font-mono-cyber font-bold focus:outline-none focus:ring-1 focus:ring-cyan-400 transition-colors"
+              />
+              <span className="absolute right-3 text-xs font-mono-cyber text-emerald-400/80 pointer-events-none font-semibold">
+                Hari
+              </span>
+            </div>
+            <span className="text-[10px] text-slate-400 mt-1 font-mono-cyber leading-tight">
+              {dateDiffInfo
+                ? `Otomatis: H+${dateDiffInfo.days} (Laporan - Start + 1)`
+                : `Hari kerja berjalan project`}
+            </span>
+          </div>
+
+          {/* Kondisi Cuaca */}
+          <div className="flex flex-col">
+            <label 
+              htmlFor="select-weather" 
+              className="h-5 flex items-center gap-1.5 text-xs font-mono-cyber text-slate-300 uppercase tracking-wider mb-1.5"
+            >
+              <CloudSun className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+              <span className="truncate">Kondisi Cuaca</span>
+            </label>
+            <div className="relative flex items-center">
+              <select
+                id="select-weather"
+                value={formData.weatherCondition}
+                onChange={(e) => handleTopLevelChange('weatherCondition', e.target.value)}
+                className="w-full h-10 appearance-none bg-[#050b14] border border-slate-700/80 focus:border-cyan-400 rounded-xl px-3 text-xs sm:text-sm text-slate-100 font-mono-cyber focus:outline-none focus:ring-1 focus:ring-cyan-400 pr-9 cursor-pointer transition-colors"
+              >
+                {WEATHER_OPTIONS.map((opt) => (
+                  <option key={opt} value={opt}>
+                    {opt}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3 pointer-events-none" />
+            </div>
+            <span className="text-[10px] text-slate-500 mt-1 font-mono-cyber leading-tight">
+              Kondisi lapangan hari ini
+            </span>
+          </div>
+
+          {/* Peringatan jika tanggal laporan sebelum tanggal start */}
+          {isDateBeforeStart && (
+            <div className="col-span-1 sm:col-span-3 flex items-center gap-2.5 p-3 rounded-xl bg-amber-950/40 border border-amber-500/40 text-amber-300 text-xs font-mono-cyber">
+              <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
+              <div>
+                <strong>Peringatan Tanggal:</strong> Tanggal Laporan ({formData.reportDate}) lebih awal dari Tanggal Start Project ({formData.startDate}). Hari Ke- otomatis diset minimal 1.
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* 3. Tanggal Start Project & Durasi Pekerjaan */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-2 border-t border-slate-800/80">
+          <div className="flex flex-col">
+            <label 
+              htmlFor="input-start-date" 
+              className="h-5 flex items-center gap-1.5 text-xs font-mono-cyber text-slate-300 uppercase tracking-wider mb-1.5"
+            >
+              <Calendar className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+              <span>Tanggal Start Project</span>
+            </label>
+            <input
+              id="input-start-date"
+              type="date"
+              value={formData.startDate}
+              onChange={(e) => handleTopLevelChange('startDate', e.target.value)}
+              className="w-full h-10 bg-[#050b14] border border-slate-700/80 focus:border-cyan-400 rounded-xl px-3 text-xs sm:text-sm text-slate-100 font-mono-cyber focus:outline-none focus:ring-1 focus:ring-cyan-400 transition-colors"
+            />
+            <span className="text-[10px] text-slate-500 mt-1 font-mono-cyber leading-tight">
+              Titik awal perhitungan Hari Ke-
+            </span>
+          </div>
+
+          <div className="flex flex-col">
+            <div className="h-5 flex items-center justify-between mb-1.5">
+              <label 
+                htmlFor="input-durasi-pekerjaan" 
+                className="flex items-center gap-1.5 text-xs font-mono-cyber text-slate-300 uppercase tracking-wider"
+              >
+                <Clock className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                <span>Durasi Pekerjaan (Hari)</span>
+              </label>
+              <span className={`text-[10px] font-mono-cyber px-1.5 py-0.5 rounded border flex items-center gap-1 ${
+                isOverdue 
+                  ? 'text-red-400 bg-red-950/70 border-red-500/40' 
+                  : 'text-emerald-400/90 bg-emerald-950/70 border-emerald-500/30'
+              }`}>
+                <Lock className="w-2.5 h-2.5" />
+                <span>Otomatis (Acuan: {TOTAL_DURASI_MASTER} Hari)</span>
+              </span>
+            </div>
+            <div className="relative flex items-center">
+              <Lock className={`w-3.5 h-3.5 absolute left-3 pointer-events-none ${isOverdue ? 'text-red-400' : 'text-slate-500'}`} />
+              <input
+                id="input-durasi-pekerjaan"
+                type="number"
+                readOnly
+                disabled
+                tabIndex={-1}
+                value={formData.durasiPekerjaan ?? ''}
+                placeholder={TOTAL_DURASI_MASTER.toString()}
+                title={`Kalkulasi Otomatis: ${TOTAL_DURASI_MASTER} (Total Master) - ${hariKe} (Hari Ke-)`}
+                className={`w-full h-10 bg-[#070e1b] border rounded-xl pl-8 pr-16 text-xs sm:text-sm font-mono-cyber font-bold cursor-not-allowed select-none focus:outline-none transition-colors ${
+                  isOverdue
+                    ? 'border-red-500 text-red-400'
+                    : 'border-slate-700/80 text-emerald-300'
+                }`}
+              />
+              <span className={`absolute right-2.5 px-2 py-0.5 text-xs font-mono-cyber font-semibold rounded pointer-events-none border ${
+                isOverdue
+                  ? 'text-red-300 bg-red-950/90 border-red-500/40'
+                  : 'text-emerald-300 bg-emerald-950/90 border-emerald-500/40'
+              }`}>
+                Hari
+              </span>
+            </div>
+            <span className="text-[10px] text-slate-400 mt-1 font-mono-cyber leading-tight">
+              Sisa Durasi = {TOTAL_DURASI_MASTER} (Total Master) - {hariKe} (Hari Ke-) = <strong className={isOverdue ? 'text-red-400' : 'text-emerald-300'}>{formData.durasiPekerjaan || 0} Hari</strong> {Number(formData.durasiPekerjaan) <= 0 ? '(0 Hari tersisa)' : 'tersisa'}
+            </span>
+            {/* Notifikasi Peringatan Keterlambatan jika isOverdue bernilai true */}
+            {isOverdue && (
+              <p className="text-red-500 font-bold text-sm mt-1 flex items-center gap-1.5">
+                <span>⚠️ Peringatan: Pelaksanaan pekerjaan telah melewati batas waktu 90 hari!</span>
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // 1. Informasi Titik & Pelaksanaan Pengamanan (Khusus Kategori Pengamanan)
+  const renderInformasiPengamanan = () => {
+    return (
+      <div className="bg-[#091224] border border-amber-500/30 rounded-2xl p-4 sm:p-5 mb-5 shadow-xl shadow-amber-950/20 space-y-4">
+        <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+          <div className="flex items-center gap-2">
+            <Shield className="w-4 h-4 text-amber-400" />
+            <h2 className="font-cyber font-bold text-sm tracking-wide text-white uppercase">
+              Informasi Titik & Pelaksanaan Pengamanan
+            </h2>
+            <span className="text-[10px] font-mono-cyber text-amber-300 bg-amber-950/80 px-2 py-0.5 rounded border border-amber-500/30 font-semibold">
+              Kategori Pengamanan
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            {onOpenClearScreen && (
+              <button
+                type="button"
+                onClick={onOpenClearScreen}
+                className="inline-flex items-center gap-1 text-[11px] font-mono-cyber px-2.5 py-1 rounded-lg bg-amber-950/80 text-amber-300 border border-amber-500/40 hover:bg-amber-900/80 transition-colors cursor-pointer font-semibold shadow-sm"
+                title="Bersihkan layar untuk input daily progress baru"
+              >
+                <Eraser className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                <span>Clear Screen</span>
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Input Jenis Pengaman, Area, Waspang, Tanggal, Cuaca */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
+          {/* Jenis Pengaman */}
+          <div className="sm:col-span-2 lg:col-span-1">
+            <div className="flex items-center justify-between mb-1.5 h-5">
+              <label 
+                htmlFor="input-pengamanan-name" 
+                className="flex items-center gap-1.5 text-xs font-mono-cyber text-amber-300 uppercase tracking-wider font-semibold truncate"
+              >
+                <Shield className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                <span className="truncate">Jenis Pengaman <span className="text-amber-400">*</span></span>
+              </label>
+              {formData.jenisPengamanan && (
+                <span className="text-[10px] font-mono-cyber text-amber-300 bg-amber-950/80 border border-amber-500/40 px-1.5 py-0.2 rounded shrink-0 font-bold truncate max-w-[140px]">
+                  {formData.jenisPengamanan}
+                </span>
+              )}
+            </div>
+            <div className="relative">
+              <input
+                id="input-pengamanan-name"
+                type="text"
+                required
+                value={formData.projectName}
+                onChange={(e) => handleTopLevelChange('projectName', e.target.value)}
+                placeholder="Pilih dari opsi jenis pengamanan di bawah atau ketik di sini..."
+                className="w-full h-10 bg-[#050b14] border border-amber-500/40 focus:border-amber-400 rounded-xl px-3.5 text-xs sm:text-sm text-slate-100 font-mono-cyber focus:outline-none focus:ring-1 focus:ring-amber-400 transition-colors"
+              />
+            </div>
+          </div>
+
+          {/* Area */}
+          <div>
+            <div className="flex items-center justify-between mb-1.5 h-5">
+              <label 
+                htmlFor="select-area-pengamanan" 
+                className="flex items-center gap-1.5 text-xs font-mono-cyber text-amber-300 uppercase tracking-wider font-semibold truncate"
+              >
+                <MapPin className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                <span className="truncate">Area <span className="text-amber-400">*</span></span>
+              </label>
+              {formData.area && (
+                <span className="text-[10px] font-mono-cyber text-indigo-300 bg-indigo-950/80 border border-indigo-500/40 px-1.5 py-0.2 rounded shrink-0 font-bold">
+                  {formData.area}
+                </span>
+              )}
+            </div>
+            <div className="relative flex items-center">
+              <select
+                id="select-area-pengamanan"
+                value={formData.area || 'Jabo 1'}
+                onChange={(e) => handleTopLevelChange('area', e.target.value)}
+                className="w-full h-10 appearance-none bg-[#050b14] border border-amber-500/40 focus:border-amber-400 rounded-xl px-3.5 text-xs sm:text-sm text-slate-100 font-mono-cyber font-semibold focus:outline-none focus:ring-1 focus:ring-amber-400 pr-9 cursor-pointer transition-colors"
+              >
+                {AREA_OPTIONS.map((opt) => (
+                  <option key={opt} value={opt} className="bg-[#050b14] text-white">
+                    {opt}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="w-4 h-4 text-amber-400 absolute right-3 pointer-events-none" />
+            </div>
+          </div>
+
+          {/* Waspang */}
+          <div>
+            <div className="flex items-center justify-between mb-1.5 h-5">
+              <label 
+                htmlFor="input-waspang-pengamanan" 
+                className="flex items-center gap-1.5 text-xs font-mono-cyber text-amber-300 uppercase tracking-wider font-semibold truncate"
+              >
+                <UserCheck className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                <span className="truncate">Waspang (Pengawas)</span>
+              </label>
+            </div>
+            <div className="relative">
+              <input
+                id="input-waspang-pengamanan"
+                type="text"
+                value={formData.waspangName || ''}
+                onChange={(e) => handleTopLevelChange('waspangName', e.target.value)}
+                placeholder="Nama waspang / pengawas..."
+                className="w-full h-10 bg-[#050b14] border border-amber-500/40 focus:border-amber-400 rounded-xl px-3.5 text-xs sm:text-sm text-slate-100 font-mono-cyber focus:outline-none focus:ring-1 focus:ring-amber-400 transition-colors"
+              />
+            </div>
+          </div>
+
+          {/* Tanggal Pelaksanaan Pengamanan */}
+          <div className="flex flex-col">
+            <label 
+              htmlFor="input-report-date-pengamanan" 
+              className="h-5 flex items-center gap-1.5 text-xs font-mono-cyber text-slate-300 uppercase tracking-wider mb-1.5"
+            >
+              <Calendar className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+              <span className="truncate">Tanggal Pelaksanaan</span>
+            </label>
+            <input
+              id="input-report-date-pengamanan"
+              type="date"
+              value={formData.reportDate}
+              onChange={(e) => handleTopLevelChange('reportDate', e.target.value)}
+              className="w-full h-10 bg-[#050b14] border border-slate-700/80 focus:border-amber-400 rounded-xl px-3 text-xs sm:text-sm text-slate-100 font-mono-cyber focus:outline-none focus:ring-1 focus:ring-amber-400 transition-colors"
+            />
+          </div>
+
+          {/* Tanggal Selesai (Format Kalender) */}
+          <div className="flex flex-col">
+            <label 
+              htmlFor="input-end-date-pengamanan" 
+              className="h-5 flex items-center gap-1.5 text-xs font-mono-cyber text-slate-300 uppercase tracking-wider mb-1.5"
+            >
+              <Calendar className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+              <span className="truncate">Tanggal Selesai</span>
+            </label>
+            <input
+              id="input-end-date-pengamanan"
+              type="date"
+              value={formData.endDate || ''}
+              min={formData.reportDate}
+              onChange={(e) => handleTopLevelChange('endDate', e.target.value)}
+              className="w-full h-10 bg-[#050b14] border border-slate-700/80 focus:border-amber-400 rounded-xl px-3 text-xs sm:text-sm text-slate-100 font-mono-cyber focus:outline-none focus:ring-1 focus:ring-amber-400 transition-colors"
+            />
+          </div>
+
+          {/* Kondisi Cuaca */}
+          <div className="flex flex-col sm:col-span-2 lg:col-span-1">
+            <label 
+              htmlFor="select-weather-pengamanan" 
+              className="h-5 flex items-center gap-1.5 text-xs font-mono-cyber text-slate-300 uppercase tracking-wider mb-1.5"
+            >
+              <CloudSun className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+              <span className="truncate">Kondisi Cuaca</span>
+            </label>
+            <div className="relative flex items-center">
+              <select
+                id="select-weather-pengamanan"
+                value={formData.weatherCondition}
+                onChange={(e) => handleTopLevelChange('weatherCondition', e.target.value)}
+                className="w-full h-10 appearance-none bg-[#050b14] border border-slate-700/80 focus:border-amber-400 rounded-xl px-3 text-xs sm:text-sm text-slate-100 font-mono-cyber focus:outline-none focus:ring-1 focus:ring-amber-400 pr-9 cursor-pointer transition-colors"
+              >
+                {WEATHER_OPTIONS.map((opt) => (
+                  <option key={opt} value={opt}>
+                    {opt}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3 pointer-events-none" />
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const handleFormSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formData.projectName || !formData.projectName.trim()) {
+      setValidationError(
+        formData.projectCategory === 'Pengamanan'
+          ? 'Silakan tentukan Jenis Pengaman terlebih dahulu.'
+          : 'Silakan ketikkan Nama Project terlebih dahulu.'
+      );
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+    setValidationError(null);
+    onSubmit(e);
+  };
+
+  return (
+    <form onSubmit={handleFormSubmit} className="pb-28">
+      {/* Editing Mode Banner Lengkap: Simpan Perubahan, Batal, & Hapus */}
+      {isEditing && (
+        <div className="mb-4 p-3.5 rounded-2xl bg-gradient-to-r from-amber-950/90 via-amber-900/60 to-orange-950/80 border-2 border-amber-500/70 text-amber-200 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xl shadow-amber-950/50 animate-fadeIn">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-amber-500/20 border border-amber-400/50 flex items-center justify-center shrink-0">
+              <Edit3 className="w-4 h-4 text-amber-300" />
+            </div>
+            <div>
+              <div className="font-bold uppercase font-cyber text-amber-300 text-xs flex items-center gap-1.5">
+                <span>Mode Edit Laporan Aktif</span>
+                <span className="text-[10px] font-mono-cyber font-normal text-amber-200/80">
+                  (Hari ke-{formData.dayNumber || '1'})
+                </span>
+              </div>
+              <div className="text-slate-200 text-xs mt-0.5">
+                Menyunting: <strong className="text-white">{formData.projectName || 'Project'}</strong> ({formData.reportDate})
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap justify-end">
+            {onDeleteCurrentReport && !confirmDeleteCurrent && (
+              <button
+                type="button"
+                onClick={() => setConfirmDeleteCurrent(true)}
+                className="px-2.5 py-1.5 rounded-xl bg-red-950/70 hover:bg-red-900/80 text-red-300 border border-red-500/40 text-[11px] font-cyber flex items-center gap-1 cursor-pointer transition-colors"
+                title="Hapus laporan yang sedang diedit ini"
+              >
+                <Trash2 className="w-3 h-3 text-red-400" />
+                <span>Hapus</span>
+              </button>
+            )}
+
+            {confirmDeleteCurrent && (
+              <div className="flex items-center gap-1.5 bg-red-950 border border-red-500/80 p-1.5 rounded-xl text-xs">
+                <span className="text-red-200 text-[11px]">Hapus permanen?</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setConfirmDeleteCurrent(false);
+                    onDeleteCurrentReport?.();
+                  }}
+                  className="px-2 py-0.5 rounded bg-red-600 hover:bg-red-500 text-white text-[10px] font-bold cursor-pointer"
+                >
+                  Ya
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfirmDeleteCurrent(false)}
+                  className="px-2 py-0.5 rounded bg-slate-800 text-slate-300 text-[10px] cursor-pointer"
+                >
+                  Batal
+                </button>
+              </div>
+            )}
+
+            {onCancelEdit && (
+              <button
+                type="button"
+                onClick={onCancelEdit}
+                className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 hover:text-white text-[11px] font-cyber cursor-pointer transition-colors flex items-center gap-1.5 active:scale-95"
+                title="Kembali ke formulir laporan baru"
+              >
+                <ArrowLeft className="w-3.5 h-3.5 text-cyan-400" />
+                <span>Kembali</span>
+              </button>
+            )}
+
+            <button
+              type="submit"
+              className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-bold font-cyber text-[11px] flex items-center gap-1.5 shadow-md shadow-emerald-950/40 cursor-pointer active:scale-95 transition-all"
+            >
+              <Check className="w-3.5 h-3.5 text-slate-950" />
+              <span>Simpan Perubahan</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Validation banner */}
+      {validationError && (
+        <div className="mb-4 p-3 rounded-xl bg-red-950/80 border border-red-500/70 text-red-200 text-xs flex items-center gap-2">
+          <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+          <span>{validationError}</span>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 1. KATEGORI PROJECT (PILIHAN UTAMA) */}
+      {/* ========================================================================= */}
+      <div 
+        id="section-kategori-project" 
+        className="bg-[#091224] border border-cyan-500/30 rounded-2xl p-4 sm:p-5 mb-5 shadow-xl shadow-cyan-950/20 scroll-mt-24 transition-all space-y-4"
+      >
+        {/* Pilihan Kategori Project: Relokasi Goverment atau Pengamanan */}
+        <div className="bg-[#050b14]/90 p-3 sm:p-3.5 rounded-xl border border-cyan-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-inner">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-cyan-950/80 border border-cyan-500/40 flex items-center justify-center shrink-0">
+              <Layers className="w-4 h-4 text-cyan-400" />
+            </div>
+            <div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs font-mono-cyber text-slate-100 font-bold uppercase tracking-wider">
+                  Kategori Project <span className="text-amber-400">*</span>
+                </span>
+                <span className="text-[10px] font-mono-cyber px-1.5 py-0.2 rounded bg-cyan-950 border border-cyan-500/40 text-cyan-300">
+                  {formData.projectCategory || 'Relokasi Government'}
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-400 font-mono-cyber mt-0.5">
+                Pilih opsi klasifikasi project: Relokasi Goverment atau Pengamanan
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2 w-full sm:w-auto shrink-0">
+            <button
+              type="button"
+              onClick={() => {
+                onChange({
+                  ...formData,
+                  projectCategory: 'Relokasi Government',
+                });
+              }}
+              className={`inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl border text-xs font-mono-cyber font-bold transition-all cursor-pointer ${
+                formData.projectCategory === 'Relokasi Government' || !formData.projectCategory
+                  ? 'bg-emerald-950 border-emerald-400 text-emerald-300 shadow-md shadow-emerald-500/20 ring-1 ring-emerald-400/60'
+                  : 'bg-[#091224] border-slate-700 text-slate-400 hover:text-white hover:border-slate-600'
+              }`}
+            >
+              <Building className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span>Relokasi Goverment</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                onChange({
+                  ...formData,
+                  projectCategory: 'Pengamanan',
+                  totalProgressSipil: 0,
+                  totalProgressKabel: 0,
+                  totalProgressKabelCoax: 0,
+                  totalProgressHH: '0',
+                  totalProgressHB: '0',
+                  totalProgressMH: '0',
+                  ...(formData.projectName?.trim().toLowerCase() === 'pengamanan' ? { projectName: '' } : {}),
+                });
+              }}
+              className={`inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl border text-xs font-mono-cyber font-bold transition-all cursor-pointer ${
+                formData.projectCategory === 'Pengamanan'
+                  ? 'bg-amber-950 border-amber-400 text-amber-300 shadow-md shadow-amber-500/20 ring-1 ring-amber-400/60'
+                  : 'bg-[#091224] border-slate-700 text-slate-400 hover:text-white hover:border-slate-600'
+              }`}
+            >
+              <Shield className="w-4 h-4 text-amber-400 shrink-0" />
+              <span>Pengamanan</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Panel Opsi Jenis Pengamanan & Informasi Pengamanan (Muncul saat Kategori = Pengamanan) */}
+        {formData.projectCategory === 'Pengamanan' && (
+          <div className="space-y-4">
+            {/* Informasi Titik & Pelaksanaan Pengamanan */}
+            {renderInformasiPengamanan()}
+
+            {/* Panel Opsi Jenis Pengamanan */}
+            <div className="p-4 rounded-2xl bg-gradient-to-br from-[#0c1424] to-[#080d19] border border-amber-500/50 shadow-xl shadow-amber-950/20 space-y-4 animate-fadeIn">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2.5 border-b border-amber-500/20">
+              <div className="flex items-center gap-2.5">
+                <div className="w-7 h-7 rounded-lg bg-amber-500/20 border border-amber-400/60 flex items-center justify-center shrink-0">
+                  <Shield className="w-4 h-4 text-amber-400" />
+                </div>
+                <div>
+                  <h4 className="text-xs font-cyber font-bold text-amber-300 uppercase tracking-wider flex items-center gap-2">
+                    <span>Opsi Jenis Pengamanan</span>
+                    {formData.jenisPengamanan && (
+                      <span className="text-[10px] font-mono-cyber px-2 py-0.5 rounded bg-amber-950/90 border border-amber-400 text-amber-200 font-bold">
+                        {formData.jenisPengamanan}
+                      </span>
+                    )}
+                  </h4>
+                  <p className="text-[11px] text-slate-400 font-mono-cyber mt-0.5">
+                    Pilih jenis pekerjaan pengamanan utilitas jaringan yang dilaksanakan
+                  </p>
+                </div>
+              </div>
+              <span className="text-[10px] font-mono-cyber text-amber-400/90 bg-amber-950/60 px-2 py-0.5 rounded border border-amber-500/30 self-start sm:self-center">
+                Wajib / Rekomendasi
+              </span>
+            </div>
+
+            {/* Grid 6 Pilihan Jenis Pengamanan */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+              {JENIS_PENGAMANAN_OPTIONS.map((opt) => {
+                const isSelected = formData.jenisPengamanan === opt.id;
+                return (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => {
+                      const willBeSelected = isSelected ? '' : opt.id;
+                      let updatedProjectName = formData.projectName;
+                      if (willBeSelected) {
+                        if (opt.id === 'Perapihan Asset' && formData.subJenisPerapihanAsset && formData.subJenisPerapihanAsset.length > 0) {
+                          updatedProjectName = `Perapihan Asset (${formData.subJenisPerapihanAsset.join(', ')})`;
+                        } else {
+                          updatedProjectName = opt.id;
+                        }
+                      } else {
+                        // Jika di-deselect dan nilai projectName sebelumnya adalah opsi ini, reset ke kosong
+                        if (formData.projectName === opt.id || formData.projectName.startsWith(opt.id)) {
+                          updatedProjectName = '';
+                        }
+                      }
+                      onChange({
+                        ...formData,
+                        jenisPengamanan: willBeSelected,
+                        projectName: updatedProjectName,
+                      });
+                    }}
+                    className={`flex items-start gap-2.5 p-3 rounded-xl border text-left transition-all cursor-pointer group ${
+                      isSelected
+                        ? 'bg-amber-950/80 border-amber-400 text-white shadow-lg shadow-amber-500/20 ring-1 ring-amber-400/60'
+                        : 'bg-[#060b16] border-slate-700/80 hover:border-amber-500/50 hover:bg-[#0a1222] text-slate-300'
+                    }`}
+                  >
+                    <div
+                      className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 transition-colors ${
+                        isSelected
+                          ? 'bg-amber-400 text-slate-950 font-bold shadow'
+                          : 'bg-slate-800/80 text-amber-400 group-hover:bg-amber-950/60'
+                      }`}
+                    >
+                      {opt.id === 'Pembangunan Uditch' && <Construction className="w-4 h-4" />}
+                      {opt.id === 'Pembangunan Jembatan/JPO' && <GitMerge className="w-4 h-4" />}
+                      {opt.id === 'Pembangunan Bantalan Kali/Sungai' && <Waves className="w-4 h-4" />}
+                      {opt.id === 'Pelebaran Jalan' && <Route className="w-4 h-4" />}
+                      {opt.id === 'Pembangunan Trotoar' && <Footprints className="w-4 h-4" />}
+                      {opt.id === 'Perapihan Asset' && <Wrench className="w-4 h-4" />}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-1">
+                        <span className={`text-xs font-cyber font-bold ${isSelected ? 'text-amber-200' : 'text-slate-200 group-hover:text-amber-300'}`}>
+                          {opt.label}
+                        </span>
+                        {isSelected && (
+                          <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse shrink-0" />
+                        )}
+                      </div>
+                      <p className="text-[10px] text-slate-400 font-mono-cyber mt-0.5 leading-snug">
+                        {opt.desc}
+                      </p>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Sub-Pilihan Rincian Perapihan Asset */}
+            {(formData.jenisPengamanan === 'Perapihan Asset' || (formData.subJenisPerapihanAsset && formData.subJenisPerapihanAsset.length > 0)) && (
+              <div className="p-3.5 rounded-xl bg-[#060c1a] border border-amber-500/40 space-y-2.5 animate-fadeIn">
+                <div className="flex items-center justify-between flex-wrap gap-1">
+                  <span className="text-xs font-cyber font-bold text-amber-300 flex items-center gap-1.5">
+                    <Wrench className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Rincian Pekerjaan Perapihan Asset:</span>
+                  </span>
+                  <span className="text-[10px] font-mono-cyber text-slate-400">
+                    Bisa dipilih lebih dari satu
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  {SUB_JENIS_PERAPIHAN_ASSET_OPTIONS.map((sub) => {
+                    const currentSubs = formData.subJenisPerapihanAsset || [];
+                    const isChecked = currentSubs.includes(sub.id);
+                    return (
+                      <button
+                        key={sub.id}
+                        type="button"
+                        onClick={() => {
+                          const updatedSubs = isChecked
+                            ? currentSubs.filter((item) => item !== sub.id)
+                            : [...currentSubs, sub.id];
+                          const subText = updatedSubs.length > 0 ? ` (${updatedSubs.join(', ')})` : '';
+                          const newProjectName = `Perapihan Asset${subText}`;
+                          onChange({
+                            ...formData,
+                            jenisPengamanan: 'Perapihan Asset',
+                            subJenisPerapihanAsset: updatedSubs,
+                            projectName: newProjectName,
+                          });
+                        }}
+                        className={`flex items-center gap-2 p-2.5 rounded-lg border text-left transition-all cursor-pointer ${
+                          isChecked
+                            ? 'bg-amber-950/90 border-amber-400 text-amber-100 font-semibold shadow-sm'
+                            : 'bg-[#050a14] border-slate-700/70 hover:border-amber-500/40 text-slate-400 hover:text-slate-200'
+                        }`}
+                      >
+                        <div
+                          className={`w-4 h-4 rounded flex items-center justify-center shrink-0 border ${
+                            isChecked
+                              ? 'bg-amber-400 border-amber-400 text-slate-950'
+                              : 'border-slate-600 bg-slate-900'
+                          }`}
+                        >
+                          {isChecked && <Check className="w-3 h-3 stroke-[3]" />}
+                        </div>
+                        <span className="text-xs font-mono-cyber leading-tight">
+                          {sub.label}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Catatan / Keterangan Tambahan Jenis Pengamanan */}
+            <div className="pt-1">
+              <label 
+                htmlFor="input-keterangan-pengamanan"
+                className="block text-[11px] font-mono-cyber text-slate-400 mb-1"
+              >
+                Catatan / Lokasi Titik Pengamanan (Opsional):
+              </label>
+              <input
+                id="input-keterangan-pengamanan"
+                type="text"
+                value={formData.keteranganPengamanan || ''}
+                onChange={(e) => handleTopLevelChange('keteranganPengamanan', e.target.value)}
+                placeholder="Misal: Segmen Jl. Margonda Km 4, koordinasi dengan pihak Dinas PUPR/Bina Marga..."
+                className="w-full h-9 bg-[#050b14] border border-amber-500/30 focus:border-amber-400 rounded-xl px-3 text-xs text-slate-100 font-mono-cyber focus:outline-none focus:ring-1 focus:ring-amber-400 transition-colors"
+              />
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+
+      {/* ========================================================================= */}
+      {/* SEKSI KHUSUS RELOKASI GOVERMENT: IDENTITAS PROJECT, JADWAL & PROGRES */}
+      {/* (Dihapus/Disembunyikan pada Kategori Project Pengamanan) */}
+      {/* ========================================================================= */}
+      {formData.projectCategory !== 'Pengamanan' && (
+        <>
+          {/* ========================================================================= */}
+          {/* 1. IDENTITAS PROJECT & JADWAL PELAKSANAAN (DALAM RELOKASI GOVERMENT) */}
+          {/* ========================================================================= */}
+          {renderIdentitasProject()}
+
+          {/* ========================================================================= */}
+          {/* 2. RINGKASAN PENCAPAIAN HARIAN (KEY TOTALS) */}
+          {/* ========================================================================= */}
+          <div id="section-key-totals" className="bg-[#091224] border border-cyan-500/30 rounded-2xl p-4 sm:p-5 mb-5 shadow-xl shadow-cyan-950/20 scroll-mt-24 transition-all space-y-4">
+        <div className="pt-1">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2.5">
+            <div>
+              <span className="text-xs font-cyber uppercase tracking-wider text-slate-200 font-semibold flex items-center gap-1.5">
+                <Layers className="w-3.5 h-3.5 text-cyan-400" />
+                <span>Ringkasan Pencapaian Harian (Key Totals)</span>
+              </span>
+              <p className="text-[10px] font-mono-cyber text-emerald-400/90 mt-0.5">
+                ⚡ Otomatis bertambah sesuai jumlah data yang diinput pada Rincian Progres Harian Lapangan
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={handleAutoSyncTotals}
+              className="self-start sm:self-auto inline-flex items-center gap-1.5 text-[11px] font-mono-cyber text-cyan-400 hover:text-cyan-300 bg-cyan-950/70 hover:bg-cyan-900/70 px-2.5 py-1 rounded-lg border border-cyan-500/40 transition-colors cursor-pointer font-medium"
+              title="Salin ulang total akumulasi dari rincian accordion otomatis"
+            >
+              <Calculator className="w-3.5 h-3.5" />
+              <span>Hitung Ulang dari Rincian</span>
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
+            {/* Total Progress Sipil Card */}
+            <div className="p-3 rounded-xl bg-[#060c18] border border-cyan-500/30 flex flex-col justify-between">
+              <div className="flex items-center justify-between mb-1.5">
+                <label 
+                  htmlFor="input-total-sipil" 
+                  className="flex items-center gap-1.5 text-xs font-mono-cyber text-cyan-300 uppercase tracking-wider font-semibold"
+                >
+                  <span className="w-2 h-2 rounded-full bg-cyan-400 shrink-0" />
+                  <span>Total Progress Sipil</span>
+                </label>
+                <span className="text-[10px] font-mono-cyber text-cyan-400/80 bg-cyan-950/60 px-1.5 py-0.5 rounded border border-cyan-500/20">
+                  Akumulasi Boring
+                </span>
+              </div>
+              <div className="relative flex items-center h-10">
+                <input
+                  id="input-total-sipil"
+                  type="number"
+                  step="any"
+                  min="0"
+                  value={formData.totalProgressSipil}
+                  onChange={(e) => handleTopLevelChange('totalProgressSipil', e.target.value)}
+                  placeholder={totalBoringMeters > 0 ? totalBoringMeters.toString() : '0'}
+                  className="w-full h-10 bg-[#091224] border border-cyan-500/40 focus:border-cyan-400 rounded-lg pl-3 pr-16 text-sm sm:text-base font-bold font-mono-cyber text-white focus:outline-none focus:ring-1 focus:ring-cyan-400 transition-colors"
+                />
+                <span className="absolute right-2.5 px-2 py-0.5 text-[11px] font-mono-cyber font-semibold text-cyan-300 bg-cyan-950/90 border border-cyan-500/40 rounded pointer-events-none">
+                  Meter
+                </span>
+              </div>
+              <div className="flex items-center justify-between mt-1 text-[10px] font-mono-cyber text-slate-400">
+                <span>Akumulasi Boring: {totalBoringMeters} m</span>
+                {totalBoringMeters > 0 && (
+                  <span className="text-emerald-400 font-semibold">Tersinkronisasi</span>
+                )}
+              </div>
+            </div>
+
+            {/* Total Progress Kabel FO Card */}
+            <div className="p-3 rounded-xl bg-[#060c18] border border-emerald-500/30 flex flex-col justify-between">
+              <div className="flex items-center justify-between mb-1.5">
+                <label 
+                  htmlFor="input-total-kabel" 
+                  className="flex items-center gap-1.5 text-xs font-mono-cyber text-emerald-300 uppercase tracking-wider font-semibold"
+                >
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0" />
+                  <span>Total Progress Kabel</span>
+                </label>
+                <span className="text-[10px] font-mono-cyber text-emerald-400/80 bg-emerald-950/60 px-1.5 py-0.5 rounded border border-emerald-500/20">
+                  Akumulasi Pulling
+                </span>
+              </div>
+              <div className="relative flex items-center h-10">
+                <input
+                  id="input-total-kabel"
+                  type="number"
+                  step="any"
+                  min="0"
+                  value={formData.totalProgressKabel}
+                  onChange={(e) => handleTopLevelChange('totalProgressKabel', e.target.value)}
+                  placeholder={totalPullingMeters > 0 ? totalPullingMeters.toString() : '0'}
+                  className="w-full h-10 bg-[#091224] border border-emerald-500/40 focus:border-emerald-400 rounded-lg pl-3 pr-16 text-sm sm:text-base font-bold font-mono-cyber text-white focus:outline-none focus:ring-1 focus:ring-emerald-400 transition-colors"
+                />
+                <span className="absolute right-2.5 px-2 py-0.5 text-[11px] font-mono-cyber font-semibold text-emerald-300 bg-emerald-950/90 border border-emerald-500/40 rounded pointer-events-none">
+                  Meter
+                </span>
+              </div>
+              <div className="flex items-center justify-between mt-1 text-[10px] font-mono-cyber text-slate-400">
+                <span>Akumulasi Pulling: {totalPullingMeters} m</span>
+                {totalPullingMeters > 0 && (
+                  <span className="text-emerald-400 font-semibold">Tersinkronisasi</span>
+                )}
+              </div>
+            </div>
+
+            {/* Total Progress Kabel Coax Card */}
+            <div className="p-3 rounded-xl bg-[#060c18] border border-blue-500/30 flex flex-col justify-between">
+              <div className="flex items-center justify-between mb-1.5">
+                <label 
+                  htmlFor="input-total-kabel-coax" 
+                  className="flex items-center gap-1.5 text-xs font-mono-cyber text-blue-300 uppercase tracking-wider font-semibold"
+                >
+                  <span className="w-2 h-2 rounded-full bg-blue-400 shrink-0" />
+                  <span>Total Progress Kabel Coax</span>
+                </label>
+                <span className="text-[10px] font-mono-cyber text-blue-400/80 bg-blue-950/60 px-1.5 py-0.5 rounded border border-blue-500/20">
+                  Akumulasi Coax
+                </span>
+              </div>
+              <div className="relative flex items-center h-10">
+                <input
+                  id="input-total-kabel-coax"
+                  type="number"
+                  step="any"
+                  min="0"
+                  value={formData.totalProgressKabelCoax ?? ''}
+                  onChange={(e) => handleTopLevelChange('totalProgressKabelCoax', e.target.value)}
+                  placeholder={totalPullingCoaxMeters > 0 ? totalPullingCoaxMeters.toString() : '0'}
+                  className="w-full h-10 bg-[#091224] border border-blue-500/40 focus:border-blue-400 rounded-lg pl-3 pr-16 text-sm sm:text-base font-bold font-mono-cyber text-white focus:outline-none focus:ring-1 focus:ring-blue-400 transition-colors"
+                />
+                <span className="absolute right-2.5 px-2 py-0.5 text-[11px] font-mono-cyber font-semibold text-blue-300 bg-blue-950/90 border border-blue-500/40 rounded pointer-events-none">
+                  Meter
+                </span>
+              </div>
+              <div className="flex items-center justify-between mt-1 text-[10px] font-mono-cyber text-slate-400">
+                <span>Akumulasi Coax: {totalPullingCoaxMeters} m</span>
+                {totalPullingCoaxMeters > 0 && (
+                  <span className="text-emerald-400 font-semibold">Tersinkronisasi</span>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Pit Key Totals: HH, HB, MH (Pcs) */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {/* Total Handhole (HH) */}
+            <div className="p-3 rounded-xl bg-[#060c18] border border-amber-500/30 flex flex-col justify-between">
+              <div className="flex items-center justify-between mb-1.5">
+                <label 
+                  htmlFor="input-total-hh" 
+                  className="flex items-center gap-1.5 text-xs font-mono-cyber text-amber-300 uppercase tracking-wider font-semibold"
+                >
+                  <span className="w-2 h-2 rounded-full bg-amber-400 shrink-0" />
+                  <span>Total HH (Handhole)</span>
+                </label>
+                <span className="text-[10px] font-mono-cyber text-amber-400/80 bg-amber-950/60 px-1.5 py-0.5 rounded border border-amber-500/20">
+                  Akumulasi HH
+                </span>
+              </div>
+              <div className="relative flex items-center h-10">
+                <input
+                  id="input-total-hh"
+                  type="number"
+                  step="any"
+                  min="0"
+                  value={formData.totalProgressHH ?? ''}
+                  onChange={(e) => handleTopLevelChange('totalProgressHH', e.target.value)}
+                  placeholder={totalHH > 0 ? totalHH.toString() : '0'}
+                  className="w-full h-10 bg-[#091224] border border-amber-500/40 focus:border-amber-400 rounded-lg pl-3 pr-14 text-sm sm:text-base font-bold font-mono-cyber text-white focus:outline-none focus:ring-1 focus:ring-amber-400 transition-colors"
+                />
+                <span className="absolute right-2.5 px-2 py-0.5 text-[11px] font-mono-cyber font-semibold text-amber-300 bg-amber-950/90 border border-amber-500/40 rounded pointer-events-none">
+                  Pcs
+                </span>
+              </div>
+              <div className="flex items-center justify-between mt-1 text-[10px] font-mono-cyber text-slate-400">
+                <span>Akumulasi HH: {totalHH} Pcs</span>
+                {totalHH > 0 && <span className="text-emerald-400 font-semibold">Tersinkronisasi</span>}
+              </div>
+            </div>
+
+            {/* Total Handbox (HB) */}
+            <div className="p-3 rounded-xl bg-[#060c18] border border-orange-500/30 flex flex-col justify-between">
+              <div className="flex items-center justify-between mb-1.5">
+                <label 
+                  htmlFor="input-total-hb" 
+                  className="flex items-center gap-1.5 text-xs font-mono-cyber text-orange-300 uppercase tracking-wider font-semibold"
+                >
+                  <span className="w-2 h-2 rounded-full bg-orange-400 shrink-0" />
+                  <span>Total HB (Handbox)</span>
+                </label>
+                <span className="text-[10px] font-mono-cyber text-orange-400/80 bg-orange-950/60 px-1.5 py-0.5 rounded border border-orange-500/20">
+                  Akumulasi HB
+                </span>
+              </div>
+              <div className="relative flex items-center h-10">
+                <input
+                  id="input-total-hb"
+                  type="number"
+                  step="any"
+                  min="0"
+                  value={formData.totalProgressHB ?? ''}
+                  onChange={(e) => handleTopLevelChange('totalProgressHB', e.target.value)}
+                  placeholder={totalHB > 0 ? totalHB.toString() : '0'}
+                  className="w-full h-10 bg-[#091224] border border-orange-500/40 focus:border-orange-400 rounded-lg pl-3 pr-14 text-sm sm:text-base font-bold font-mono-cyber text-white focus:outline-none focus:ring-1 focus:ring-orange-400 transition-colors"
+                />
+                <span className="absolute right-2.5 px-2 py-0.5 text-[11px] font-mono-cyber font-semibold text-orange-300 bg-orange-950/90 border border-orange-500/40 rounded pointer-events-none">
+                  Pcs
+                </span>
+              </div>
+              <div className="flex items-center justify-between mt-1 text-[10px] font-mono-cyber text-slate-400">
+                <span>Akumulasi HB: {totalHB} Pcs</span>
+                {totalHB > 0 && <span className="text-emerald-400 font-semibold">Tersinkronisasi</span>}
+              </div>
+            </div>
+
+            {/* Total Manhole (MH) */}
+            <div className="p-3 rounded-xl bg-[#060c18] border border-purple-500/30 flex flex-col justify-between">
+              <div className="flex items-center justify-between mb-1.5">
+                <label 
+                  htmlFor="input-total-mh" 
+                  className="flex items-center gap-1.5 text-xs font-mono-cyber text-purple-300 uppercase tracking-wider font-semibold"
+                >
+                  <span className="w-2 h-2 rounded-full bg-purple-400 shrink-0" />
+                  <span>Total MH (Manhole)</span>
+                </label>
+                <span className="text-[10px] font-mono-cyber text-purple-400/80 bg-purple-950/60 px-1.5 py-0.5 rounded border border-purple-500/20">
+                  Akumulasi MH
+                </span>
+              </div>
+              <div className="relative flex items-center h-10">
+                <input
+                  id="input-total-mh"
+                  type="number"
+                  step="any"
+                  min="0"
+                  value={formData.totalProgressMH ?? ''}
+                  onChange={(e) => handleTopLevelChange('totalProgressMH', e.target.value)}
+                  placeholder={totalMH > 0 ? totalMH.toString() : '0'}
+                  className="w-full h-10 bg-[#091224] border border-purple-500/40 focus:border-purple-400 rounded-lg pl-3 pr-14 text-sm sm:text-base font-bold font-mono-cyber text-white focus:outline-none focus:ring-1 focus:ring-purple-400 transition-colors"
+                />
+                <span className="absolute right-2.5 px-2 py-0.5 text-[11px] font-mono-cyber font-semibold text-purple-300 bg-purple-950/90 border border-purple-500/40 rounded pointer-events-none">
+                  Pcs
+                </span>
+              </div>
+              <div className="flex items-center justify-between mt-1 text-[10px] font-mono-cyber text-slate-400">
+                <span>Akumulasi MH: {totalMH} Pcs</span>
+                {totalMH > 0 && <span className="text-emerald-400 font-semibold">Tersinkronisasi</span>}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ========================================================================= */}
+      {/* 2. RINCIAN PROGRES HARIAN LAPANGAN */}
+      {/* ========================================================================= */}
+      <div className="bg-[#091224] border border-cyan-500/30 rounded-2xl p-4 sm:p-5 mb-5 shadow-xl shadow-cyan-950/20 space-y-4">
+        <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+          <div className="flex items-center gap-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-pulse" />
+            <h3 className="font-cyber font-bold text-sm text-white uppercase tracking-wider">
+              Rincian Progres Harian Lapangan
+            </h3>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => toggleAllAccordions(true)}
+              className="text-[10px] font-mono-cyber text-cyan-400 hover:text-cyan-300 underline cursor-pointer"
+            >
+              Buka Semua
+            </button>
+            <span className="text-slate-600">|</span>
+            <button
+              type="button"
+              onClick={() => toggleAllAccordions(false)}
+              className="text-[10px] font-mono-cyber text-slate-400 hover:text-slate-300 underline cursor-pointer"
+            >
+              Tutup Semua
+            </button>
+          </div>
+        </div>
+
+        {/* ----------------------------------------------------------------------- */}
+        {/* I. PEKERJAAN BORING (Meter) */}
+        {/* ----------------------------------------------------------------------- */}
+        <AccordionSection
+          id="accordion-boring"
+          title="I. Pekerjaan Boring (Meter)"
+          subtitle="Boring Alur, Crossing Jalan, Akses, & Jembatan"
+          badge={`${totalBoringMeters} m`}
+          isOpen={openAccordions.boring}
+          onToggle={() => toggleAccordion('boring')}
+          accentColor="cyan"
+          icon={<Layers className="w-4 h-4 text-cyan-400" />}
+        >
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-2">
+            <div className="flex flex-col">
+              <label 
+                htmlFor="input-boring-alur" 
+                className="h-5 flex items-center text-xs font-mono-cyber text-slate-300 mb-1.5 truncate"
+              >
+                Boring Alur
+              </label>
+              <div className="relative flex items-center h-10">
+                <input
+                  id="input-boring-alur"
+                  type="number"
+                  step="any"
+                  min="0"
+                  value={formData.boring.boringAlur}
+                  onChange={(e) => handleNestedChange('boring', 'boringAlur', e.target.value)}
+                  placeholder="0"
+                  className="w-full h-10 bg-[#050b14] border border-slate-700/80 focus:border-cyan-400 rounded-xl pl-3 pr-10 text-xs sm:text-sm font-mono-cyber text-white focus:outline-none focus:ring-1 focus:ring-cyan-400 transition-colors"
+                />
+                <span className="absolute right-3 text-xs font-mono-cyber text-slate-400 pointer-events-none">
+                  m
+                </span>
+              </div>
+            </div>
+
+            <div className="flex flex-col">
+              <label 
+                htmlFor="input-boring-crossing-jalan" 
+                className="h-5 flex items-center text-xs font-mono-cyber text-slate-300 mb-1.5 truncate"
+              >
+                Boring Crossing Jalan
+              </label>
+              <div className="relative flex items-center h-10">
+                <input
+                  id="input-boring-crossing-jalan"
+                  type="number"
+                  step="any"
+                  min="0"
+                  value={formData.boring.boringCrossingJalan}
+                  onChange={(e) => handleNestedChange('boring', 'boringCrossingJalan', e.target.value)}
+                  placeholder="0"
+                  className="w-full h-10 bg-[#050b14] border border-slate-700/80 focus:border-cyan-400 rounded-xl pl-3 pr-10 text-xs sm:text-sm font-mono-cyber text-white focus:outline-none focus:ring-1 focus:ring-cyan-400 transition-colors"
+                />
+                <span className="absolute right-3 text-xs font-mono-cyber text-slate-400 pointer-events-none">
+                  m
+                </span>
+              </div>
+            </div>
+
+            <div className="flex flex-col">
+              <label 
+                htmlFor="input-boring-akses" 
+                className="h-5 flex items-center text-xs font-mono-cyber text-slate-300 mb-1.5 truncate"
+              >
+                Boring Akses
+              </label>
+              <div className="relative flex items-center h-10">
+                <input
+                  id="input-boring-akses"
+                  type="number"
+                  step="any"
+                  min="0"
+                  value={formData.boring.boringAkses ?? formData.boring.boringCrossingJalanTol ?? ''}
+                  onChange={(e) => handleNestedChange('boring', 'boringAkses', e.target.value)}
+                  placeholder="0"
+                  className="w-full h-10 bg-[#050b14] border border-slate-700/80 focus:border-cyan-400 rounded-xl pl-3 pr-10 text-xs sm:text-sm font-mono-cyber text-white focus:outline-none focus:ring-1 focus:ring-cyan-400 transition-colors"
+                />
+                <span className="absolute right-3 text-xs font-mono-cyber text-slate-400 pointer-events-none">
+                  m
+                </span>
+              </div>
+            </div>
+
+            <div className="flex flex-col">
+              <label 
+                htmlFor="input-boring-crossing-jembatan" 
+                className="h-5 flex items-center text-xs font-mono-cyber text-slate-300 mb-1.5 truncate"
+              >
+                Boring Crossing Jembatan
+              </label>
+              <div className="relative flex items-center h-10">
+                <input
+                  id="input-boring-crossing-jembatan"
+                  type="number"
+                  step="any"
+                  min="0"
+                  value={formData.boring.boringCrossingJembatan}
+                  onChange={(e) => handleNestedChange('boring', 'boringCrossingJembatan', e.target.value)}
+                  placeholder="0"
+                  className="w-full h-10 bg-[#050b14] border border-slate-700/80 focus:border-cyan-400 rounded-xl pl-3 pr-10 text-xs sm:text-sm font-mono-cyber text-white focus:outline-none focus:ring-1 focus:ring-cyan-400 transition-colors"
+                />
+                <span className="absolute right-3 text-xs font-mono-cyber text-slate-400 pointer-events-none">
+                  m
+                </span>
+              </div>
+            </div>
+          </div>
+        </AccordionSection>
+
+        {/* ----------------------------------------------------------------------- */}
+        {/* II. PENARIKAN KABEL / PULLING (Meter) */}
+        {/* ----------------------------------------------------------------------- */}
+        <AccordionSection
+          id="accordion-pulling"
+          title="II. Penarikan Kabel / Pulling (Meter)"
+          subtitle="Pulling Kabel 288, 288 GL, 144, 96, 96 GL, 48, 24 & Kabel Coax"
+          badge={`${totalPullingMeters + totalPullingCoaxMeters} m`}
+          isOpen={openAccordions.pulling}
+          onToggle={() => toggleAccordion('pulling')}
+          accentColor="emerald"
+          icon={<Cable className="w-4 h-4 text-emerald-400" />}
+        >
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-2">
+            <div className="flex flex-col">
+              <label 
+                htmlFor="input-pulling-288" 
+                className="h-5 flex items-center text-xs font-mono-cyber text-slate-300 mb-1.5 truncate"
+              >
+                Pulling Kabel 288
+              </label>
+              <div className="relative flex items-center h-10">
+                <input
+                  id="input-pulling-288"
+                  type="number"
+                  step="any"
+                  min="0"
+                  value={formData.pulling.pulling288}
+                  onChange={(e) => handleNestedChange('pulling', 'pulling288', e.target.value)}
+                  placeholder="0"
+                  className="w-full h-10 bg-[#050b14] border border-slate-700/80 focus:border-emerald-400 rounded-xl pl-3 pr-10 text-xs sm:text-sm font-mono-cyber text-white focus:outline-none focus:ring-1 focus:ring-emerald-400 transition-colors"
+                />
+                <span className="absolute right-3 text-xs font-mono-cyber text-slate-400 pointer-events-none">
+                  m
+                </span>
+              </div>
+            </div>
+
+            <div className="flex flex-col">
+              <label 
+                htmlFor="input-pulling-288gl" 
+                className="h-5 flex items-center text-xs font-mono-cyber text-slate-300 mb-1.5 truncate"
+              >
+                Pulling Kabel 288 GL
+              </label>
+              <div className="relative flex items-center h-10">
+                <input
+                  id="input-pulling-288gl"
+                  type="number"
+                  step="any"
+                  min="0"
+                  value={formData.pulling.pulling288GL}
+                  onChange={(e) => handleNestedChange('pulling', 'pulling288GL', e.target.value)}
+                  placeholder="0"
+                  className="w-full h-10 bg-[#050b14] border border-slate-700/80 focus:border-emerald-400 rounded-xl pl-3 pr-10 text-xs sm:text-sm font-mono-cyber text-white focus:outline-none focus:ring-1 focus:ring-emerald-400 transition-colors"
+                />
+                <span className="absolute right-3 text-xs font-mono-cyber text-slate-400 pointer-events-none">
+                  m
+                </span>
+              </div>
+            </div>
+
+            <div className="flex flex-col">
+              <label 
+                htmlFor="input-pulling-144" 
+                className="h-5 flex items-center text-xs font-mono-cyber text-slate-300 mb-1.5 truncate"
+              >
+                Pulling Kabel 144
+              </label>
+              <div className="relative flex items-center h-10">
+                <input
+                  id="input-pulling-144"
+                  type="number"
+                  step="any"
+                  min="0"
+                  value={formData.pulling.pulling144}
+                  onChange={(e) => handleNestedChange('pulling', 'pulling144', e.target.value)}
+                  placeholder="0"
+                  className="w-full h-10 bg-[#050b14] border border-slate-700/80 focus:border-emerald-400 rounded-xl pl-3 pr-10 text-xs sm:text-sm font-mono-cyber text-white focus:outline-none focus:ring-1 focus:ring-emerald-400 transition-colors"
+                />
+                <span className="absolute right-3 text-xs font-mono-cyber text-slate-400 pointer-events-none">
+                  m
+                </span>
+              </div>
+            </div>
+
+            <div className="flex flex-col">
+              <label 
+                htmlFor="input-pulling-144gl" 
+                className="h-5 flex items-center text-xs font-mono-cyber text-slate-300 mb-1.5 truncate"
+              >
+                Pulling Kabel 144 GL
+              </label>
+              <div className="relative flex items-center h-10">
+                <input
+                  id="input-pulling-144gl"
+                  type="number"
+                  step="any"
+                  min="0"
+                  value={formData.pulling.pulling144GL || ''}
+                  onChange={(e) => handleNestedChange('pulling', 'pulling144GL', e.target.value)}
+                  placeholder="0"
+                  className="w-full h-10 bg-[#050b14] border border-slate-700/80 focus:border-emerald-400 rounded-xl pl-3 pr-10 text-xs sm:text-sm font-mono-cyber text-white focus:outline-none focus:ring-1 focus:ring-emerald-400 transition-colors"
+                />
+                <span className="absolute right-3 text-xs font-mono-cyber text-slate-400 pointer-events-none">
+                  m
+                </span>
+              </div>
+            </div>
+
+            <div className="flex flex-col">
+              <label 
+                htmlFor="input-pulling-96" 
+                className="h-5 flex items-center text-xs font-mono-cyber text-slate-300 mb-1.5 truncate"
+              >
+                Pulling Kabel 96
+              </label>
+              <div className="relative flex items-center h-10">
+                <input
+                  id="input-pulling-96"
+                  type="number"
+                  step="any"
+                  min="0"
+                  value={formData.pulling.pulling96}
+                  onChange={(e) => handleNestedChange('pulling', 'pulling96', e.target.value)}
+                  placeholder="0"
+                  className="w-full h-10 bg-[#050b14] border border-slate-700/80 focus:border-emerald-400 rounded-xl pl-3 pr-10 text-xs sm:text-sm font-mono-cyber text-white focus:outline-none focus:ring-1 focus:ring-emerald-400 transition-colors"
+                />
+                <span className="absolute right-3 text-xs font-mono-cyber text-slate-400 pointer-events-none">
+                  m
+                </span>
+              </div>
+            </div>
+
+            <div className="flex flex-col">
+              <label 
+                htmlFor="input-pulling-96gl" 
+                className="h-5 flex items-center text-xs font-mono-cyber text-slate-300 mb-1.5 truncate"
+              >
+                Pulling Kabel 96 GL
+              </label>
+              <div className="relative flex items-center h-10">
+                <input
+                  id="input-pulling-96gl"
+                  type="number"
+                  step="any"
+                  min="0"
+                  value={formData.pulling.pulling96GL}
+                  onChange={(e) => handleNestedChange('pulling', 'pulling96GL', e.target.value)}
+                  placeholder="0"
+                  className="w-full h-10 bg-[#050b14] border border-slate-700/80 focus:border-emerald-400 rounded-xl pl-3 pr-10 text-xs sm:text-sm font-mono-cyber text-white focus:outline-none focus:ring-1 focus:ring-emerald-400 transition-colors"
+                />
+                <span className="absolute right-3 text-xs font-mono-cyber text-slate-400 pointer-events-none">
+                  m
+                </span>
+              </div>
+            </div>
+
+            <div className="flex flex-col">
+              <label 
+                htmlFor="input-pulling-48" 
+                className="h-5 flex items-center text-xs font-mono-cyber text-slate-300 mb-1.5 truncate"
+              >
+                Pulling Kabel 48
+              </label>
+              <div className="relative flex items-center h-10">
+                <input
+                  id="input-pulling-48"
+                  type="number"
+                  step="any"
+                  min="0"
+                  value={formData.pulling.pulling48}
+                  onChange={(e) => handleNestedChange('pulling', 'pulling48', e.target.value)}
+                  placeholder="0"
+                  className="w-full h-10 bg-[#050b14] border border-slate-700/80 focus:border-emerald-400 rounded-xl pl-3 pr-10 text-xs sm:text-sm font-mono-cyber text-white focus:outline-none focus:ring-1 focus:ring-emerald-400 transition-colors"
+                />
+                <span className="absolute right-3 text-xs font-mono-cyber text-slate-400 pointer-events-none">
+                  m
+                </span>
+              </div>
+            </div>
+
+            <div className="flex flex-col">
+              <label 
+                htmlFor="input-pulling-24" 
+                className="h-5 flex items-center text-xs font-mono-cyber text-slate-300 mb-1.5 truncate"
+              >
+                Pulling Kabel 24
+              </label>
+              <div className="relative flex items-center h-10">
+                <input
+                  id="input-pulling-24"
+                  type="number"
+                  step="any"
+                  min="0"
+                  value={formData.pulling.pulling24}
+                  onChange={(e) => handleNestedChange('pulling', 'pulling24', e.target.value)}
+                  placeholder="0"
+                  className="w-full h-10 bg-[#050b14] border border-slate-700/80 focus:border-emerald-400 rounded-xl pl-3 pr-10 text-xs sm:text-sm font-mono-cyber text-white focus:outline-none focus:ring-1 focus:ring-emerald-400 transition-colors"
+                />
+                <span className="absolute right-3 text-xs font-mono-cyber text-slate-400 pointer-events-none">
+                  m
+                </span>
+              </div>
+            </div>
+
+            <div className="flex flex-col">
+              <label 
+                htmlFor="input-pulling-12" 
+                className="h-5 flex items-center text-xs font-mono-cyber text-slate-300 mb-1.5 truncate"
+              >
+                Pulling Kabel 12
+              </label>
+              <div className="relative flex items-center h-10">
+                <input
+                  id="input-pulling-12"
+                  type="number"
+                  step="any"
+                  min="0"
+                  value={formData.pulling.pulling12 || ''}
+                  onChange={(e) => handleNestedChange('pulling', 'pulling12', e.target.value)}
+                  placeholder="0"
+                  className="w-full h-10 bg-[#050b14] border border-slate-700/80 focus:border-emerald-400 rounded-xl pl-3 pr-10 text-xs sm:text-sm font-mono-cyber text-white focus:outline-none focus:ring-1 focus:ring-emerald-400 transition-colors"
+                />
+                <span className="absolute right-3 text-xs font-mono-cyber text-slate-400 pointer-events-none">
+                  m
+                </span>
+              </div>
+            </div>
+
+            {/* 8th slot: Pulling Kabel Coax */}
+            <div className="flex flex-col">
+              <label 
+                htmlFor="input-pulling-coax" 
+                className="h-5 flex items-center text-xs font-mono-cyber text-blue-300 mb-1.5 truncate font-semibold"
+              >
+                Pulling Kabel Coax
+              </label>
+              <div className="relative flex items-center h-10">
+                <input
+                  id="input-pulling-coax"
+                  type="number"
+                  step="any"
+                  min="0"
+                  value={formData.pulling?.pullingCoax ?? ''}
+                  onChange={(e) => handleNestedChange('pulling', 'pullingCoax', e.target.value)}
+                  placeholder="0"
+                  className="w-full h-10 bg-[#050b14] border border-slate-700/80 focus:border-blue-400 rounded-xl pl-3 pr-10 text-xs sm:text-sm font-mono-cyber text-white focus:outline-none focus:ring-1 focus:ring-blue-400 transition-colors"
+                />
+                <span className="absolute right-3 text-xs font-mono-cyber text-blue-400 pointer-events-none font-semibold">
+                  m
+                </span>
+              </div>
+            </div>
+
+            {/* Pulling summary footer bar */}
+            <div className="col-span-1 sm:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+              <div className="h-10 flex items-center justify-between px-3.5 bg-[#060c18] border border-emerald-500/40 rounded-xl">
+                <span className="text-xs font-mono-cyber text-slate-400">Total Tarikan FO:</span>
+                <span className="text-xs sm:text-sm font-bold font-mono-cyber text-emerald-300">{totalPullingMeters} m</span>
+              </div>
+              <div className="h-10 flex items-center justify-between px-3.5 bg-[#060c18] border border-blue-500/40 rounded-xl">
+                <span className="text-xs font-mono-cyber text-slate-400">Total Tarikan Coax:</span>
+                <span className="text-xs sm:text-sm font-bold font-mono-cyber text-blue-300">{totalPullingCoaxMeters} m</span>
+              </div>
+            </div>
+          </div>
+        </AccordionSection>
+
+        {/* ----------------------------------------------------------------------- */}
+        {/* III. INSTALASI HH, HB, MH & MB (Pcs) */}
+        {/* Dibagi menjadi 4 sub-kategori, masing-masing dengan "Total Pcs" */}
+        {/* ----------------------------------------------------------------------- */}
+        <AccordionSection
+          id="accordion-pits"
+          title="III. Instalasi HH, HB, MH & MB (Pcs)"
+          subtitle="Handhole, Handbox, Manhole, Manbox"
+          badge={`${totalPitsCombined} Pcs`}
+          isOpen={openAccordions.pits}
+          onToggle={() => toggleAccordion('pits')}
+          accentColor="amber"
+          icon={<Boxes className="w-4 h-4 text-amber-400" />}
+        >
+          <div className="space-y-3 pt-2">
+            
+            {/* Sub-kategori 1: Instalasi HH (Handhole 60x60 s/d 120x120) */}
+            <div className="p-3 rounded-xl bg-[#060c18] border border-slate-800">
+              <div className="flex items-center justify-between mb-2.5 pb-2 border-b border-slate-800/80">
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-cyan-400" />
+                  <span className="text-xs font-cyber font-bold text-white uppercase">
+                    1) Instalasi HH (60x60 s/d 120x120)
+                  </span>
+                </div>
+                {/* Tampilkan Total Pcs */}
+                <div className="px-2 py-0.5 rounded bg-cyan-950/80 border border-cyan-500/40 text-cyan-300 font-mono-cyber text-xs font-bold">
+                  Total: {totalHH} Pcs
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
+                <div className="flex flex-col">
+                  <label htmlFor="input-hh-60" className="h-4 flex items-center text-[11px] font-mono-cyber text-slate-400 mb-1">
+                    HH 60x60
+                  </label>
+                  <input
+                    id="input-hh-60"
+                    type="number"
+                    min="0"
+                    value={formData.instalasiHH.hh60x60}
+                    onChange={(e) => handleNestedChange('instalasiHH', 'hh60x60', e.target.value)}
+                    placeholder="0"
+                    className="w-full h-9 bg-[#091224] border border-slate-700/80 focus:border-cyan-400 rounded-lg px-2.5 text-xs font-mono-cyber text-white focus:outline-none focus:ring-1 focus:ring-cyan-400 transition-colors"
+                  />
+                </div>
+                <div className="flex flex-col">
+                  <label htmlFor="input-hh-80" className="h-4 flex items-center text-[11px] font-mono-cyber text-slate-400 mb-1">
+                    HH 80x80
+                  </label>
+                  <input
+                    id="input-hh-80"
+                    type="number"
+                    min="0"
+                    value={formData.instalasiHH.hh80x80}
+                    onChange={(e) => handleNestedChange('instalasiHH', 'hh80x80', e.target.value)}
+                    placeholder="0"
+                    className="w-full h-9 bg-[#091224] border border-slate-700/80 focus:border-cyan-400 rounded-lg px-2.5 text-xs font-mono-cyber text-white focus:outline-none focus:ring-1 focus:ring-cyan-400 transition-colors"
+                  />
+                </div>
+                <div className="flex flex-col">
+                  <label htmlFor="input-hh-100" className="h-4 flex items-center text-[11px] font-mono-cyber text-slate-400 mb-1">
+                    HH 100x100
+                  </label>
+                  <input
+                    id="input-hh-100"
+                    type="number"
+                    min="0"
+                    value={formData.instalasiHH.hh100x100}
+                    onChange={(e) => handleNestedChange('instalasiHH', 'hh100x100', e.target.value)}
+                    placeholder="0"
+                    className="w-full h-9 bg-[#091224] border border-slate-700/80 focus:border-cyan-400 rounded-lg px-2.5 text-xs font-mono-cyber text-white focus:outline-none focus:ring-1 focus:ring-cyan-400 transition-colors"
+                  />
+                </div>
+                <div className="flex flex-col">
+                  <label htmlFor="input-hh-110" className="h-4 flex items-center text-[11px] font-mono-cyber text-slate-400 mb-1">
+                    HH 110x110
+                  </label>
+                  <input
+                    id="input-hh-110"
+                    type="number"
+                    min="0"
+                    value={formData.instalasiHH.hh110x110 || ''}
+                    onChange={(e) => handleNestedChange('instalasiHH', 'hh110x110', e.target.value)}
+                    placeholder="0"
+                    className="w-full h-9 bg-[#091224] border border-slate-700/80 focus:border-cyan-400 rounded-lg px-2.5 text-xs font-mono-cyber text-white focus:outline-none focus:ring-1 focus:ring-cyan-400 transition-colors"
+                  />
+                </div>
+                <div className="flex flex-col">
+                  <label htmlFor="input-hh-120" className="h-4 flex items-center text-[11px] font-mono-cyber text-slate-400 mb-1">
+                    HH 120x120
+                  </label>
+                  <input
+                    id="input-hh-120"
+                    type="number"
+                    min="0"
+                    value={formData.instalasiHH.hh120x120}
+                    onChange={(e) => handleNestedChange('instalasiHH', 'hh120x120', e.target.value)}
+                    placeholder="0"
+                    className="w-full h-9 bg-[#091224] border border-slate-700/80 focus:border-cyan-400 rounded-lg px-2.5 text-xs font-mono-cyber text-white focus:outline-none focus:ring-1 focus:ring-cyan-400 transition-colors"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Sub-kategori 2: Instalasi HB (Handbox 60x60 s/d 120x120) */}
+            <div className="p-3 rounded-xl bg-[#060c18] border border-slate-800">
+              <div className="flex items-center justify-between mb-2.5 pb-2 border-b border-slate-800/80">
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                  <span className="text-xs font-cyber font-bold text-white uppercase">
+                    2) Instalasi HB (60x60 s/d 120x120)
+                  </span>
+                </div>
+                {/* Tampilkan Total Pcs */}
+                <div className="px-2 py-0.5 rounded bg-emerald-950/80 border border-emerald-500/40 text-emerald-300 font-mono-cyber text-xs font-bold">
+                  Total: {totalHB} Pcs
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
+                <div className="flex flex-col">
+                  <label htmlFor="input-hb-60" className="h-4 flex items-center text-[11px] font-mono-cyber text-slate-400 mb-1">
+                    HB 60x60
+                  </label>
+                  <input
+                    id="input-hb-60"
+                    type="number"
+                    min="0"
+                    value={formData.instalasiHB.hb60x60}
+                    onChange={(e) => handleNestedChange('instalasiHB', 'hb60x60', e.target.value)}
+                    placeholder="0"
+                    className="w-full h-9 bg-[#091224] border border-slate-700/80 focus:border-emerald-400 rounded-lg px-2.5 text-xs font-mono-cyber text-white focus:outline-none focus:ring-1 focus:ring-emerald-400 transition-colors"
+                  />
+                </div>
+                <div className="flex flex-col">
+                  <label htmlFor="input-hb-80" className="h-4 flex items-center text-[11px] font-mono-cyber text-slate-400 mb-1">
+                    HB 80x80
+                  </label>
+                  <input
+                    id="input-hb-80"
+                    type="number"
+                    min="0"
+                    value={formData.instalasiHB.hb80x80}
+                    onChange={(e) => handleNestedChange('instalasiHB', 'hb80x80', e.target.value)}
+                    placeholder="0"
+                    className="w-full h-9 bg-[#091224] border border-slate-700/80 focus:border-emerald-400 rounded-lg px-2.5 text-xs font-mono-cyber text-white focus:outline-none focus:ring-1 focus:ring-emerald-400 transition-colors"
+                  />
+                </div>
+                <div className="flex flex-col">
+                  <label htmlFor="input-hb-100" className="h-4 flex items-center text-[11px] font-mono-cyber text-slate-400 mb-1">
+                    HB 100x100
+                  </label>
+                  <input
+                    id="input-hb-100"
+                    type="number"
+                    min="0"
+                    value={formData.instalasiHB.hb100x100}
+                    onChange={(e) => handleNestedChange('instalasiHB', 'hb100x100', e.target.value)}
+                    placeholder="0"
+                    className="w-full h-9 bg-[#091224] border border-slate-700/80 focus:border-emerald-400 rounded-lg px-2.5 text-xs font-mono-cyber text-white focus:outline-none focus:ring-1 focus:ring-emerald-400 transition-colors"
+                  />
+                </div>
+                <div className="flex flex-col">
+                  <label htmlFor="input-hb-110" className="h-4 flex items-center text-[11px] font-mono-cyber text-slate-400 mb-1">
+                    HB 110x110
+                  </label>
+                  <input
+                    id="input-hb-110"
+                    type="number"
+                    min="0"
+                    value={formData.instalasiHB.hb110x110 || ''}
+                    onChange={(e) => handleNestedChange('instalasiHB', 'hb110x110', e.target.value)}
+                    placeholder="0"
+                    className="w-full h-9 bg-[#091224] border border-slate-700/80 focus:border-emerald-400 rounded-lg px-2.5 text-xs font-mono-cyber text-white focus:outline-none focus:ring-1 focus:ring-emerald-400 transition-colors"
+                  />
+                </div>
+                <div className="flex flex-col">
+                  <label htmlFor="input-hb-120" className="h-4 flex items-center text-[11px] font-mono-cyber text-slate-400 mb-1">
+                    HB 120x120
+                  </label>
+                  <input
+                    id="input-hb-120"
+                    type="number"
+                    min="0"
+                    value={formData.instalasiHB.hb120x120}
+                    onChange={(e) => handleNestedChange('instalasiHB', 'hb120x120', e.target.value)}
+                    placeholder="0"
+                    className="w-full h-9 bg-[#091224] border border-slate-700/80 focus:border-emerald-400 rounded-lg px-2.5 text-xs font-mono-cyber text-white focus:outline-none focus:ring-1 focus:ring-emerald-400 transition-colors"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Sub-kategori 3: Instalasi MH (Manhole 60x60 s/d 120x120) */}
+            <div className="p-3 rounded-xl bg-[#060c18] border border-slate-800">
+              <div className="flex items-center justify-between mb-2.5 pb-2 border-b border-slate-800/80">
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-amber-400" />
+                  <span className="text-xs font-cyber font-bold text-white uppercase">
+                    3) Instalasi MH (60x60 s/d 120x120)
+                  </span>
+                </div>
+                {/* Tampilkan Total Pcs */}
+                <div className="px-2 py-0.5 rounded bg-amber-950/80 border border-amber-500/40 text-amber-300 font-mono-cyber text-xs font-bold">
+                  Total: {totalMH} Pcs
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
+                <div className="flex flex-col">
+                  <label htmlFor="input-mh-60" className="h-4 flex items-center text-[11px] font-mono-cyber text-slate-400 mb-1">
+                    MH 60x60
+                  </label>
+                  <input
+                    id="input-mh-60"
+                    type="number"
+                    min="0"
+                    value={formData.instalasiMH.mh60x60 || ''}
+                    onChange={(e) => handleNestedChange('instalasiMH', 'mh60x60', e.target.value)}
+                    placeholder="0"
+                    className="w-full h-9 bg-[#091224] border border-slate-700/80 focus:border-amber-400 rounded-lg px-2.5 text-xs font-mono-cyber text-white focus:outline-none focus:ring-1 focus:ring-amber-400 transition-colors"
+                  />
+                </div>
+                <div className="flex flex-col">
+                  <label htmlFor="input-mh-80" className="h-4 flex items-center text-[11px] font-mono-cyber text-slate-400 mb-1">
+                    MH 80x80
+                  </label>
+                  <input
+                    id="input-mh-80"
+                    type="number"
+                    min="0"
+                    value={formData.instalasiMH.mh80x80}
+                    onChange={(e) => handleNestedChange('instalasiMH', 'mh80x80', e.target.value)}
+                    placeholder="0"
+                    className="w-full h-9 bg-[#091224] border border-slate-700/80 focus:border-amber-400 rounded-lg px-2.5 text-xs font-mono-cyber text-white focus:outline-none focus:ring-1 focus:ring-amber-400 transition-colors"
+                  />
+                </div>
+                <div className="flex flex-col">
+                  <label htmlFor="input-mh-100" className="h-4 flex items-center text-[11px] font-mono-cyber text-slate-400 mb-1">
+                    MH 100x100
+                  </label>
+                  <input
+                    id="input-mh-100"
+                    type="number"
+                    min="0"
+                    value={formData.instalasiMH.mh100x100}
+                    onChange={(e) => handleNestedChange('instalasiMH', 'mh100x100', e.target.value)}
+                    placeholder="0"
+                    className="w-full h-9 bg-[#091224] border border-slate-700/80 focus:border-amber-400 rounded-lg px-2.5 text-xs font-mono-cyber text-white focus:outline-none focus:ring-1 focus:ring-amber-400 transition-colors"
+                  />
+                </div>
+                <div className="flex flex-col">
+                  <label htmlFor="input-mh-110" className="h-4 flex items-center text-[11px] font-mono-cyber text-slate-400 mb-1">
+                    MH 110x110
+                  </label>
+                  <input
+                    id="input-mh-110"
+                    type="number"
+                    min="0"
+                    value={formData.instalasiMH.mh110x110 || ''}
+                    onChange={(e) => handleNestedChange('instalasiMH', 'mh110x110', e.target.value)}
+                    placeholder="0"
+                    className="w-full h-9 bg-[#091224] border border-slate-700/80 focus:border-amber-400 rounded-lg px-2.5 text-xs font-mono-cyber text-white focus:outline-none focus:ring-1 focus:ring-amber-400 transition-colors"
+                  />
+                </div>
+                <div className="flex flex-col">
+                  <label htmlFor="input-mh-120" className="h-4 flex items-center text-[11px] font-mono-cyber text-slate-400 mb-1">
+                    MH 120x120
+                  </label>
+                  <input
+                    id="input-mh-120"
+                    type="number"
+                    min="0"
+                    value={formData.instalasiMH.mh120x120}
+                    onChange={(e) => handleNestedChange('instalasiMH', 'mh120x120', e.target.value)}
+                    placeholder="0"
+                    className="w-full h-9 bg-[#091224] border border-slate-700/80 focus:border-amber-400 rounded-lg px-2.5 text-xs font-mono-cyber text-white focus:outline-none focus:ring-1 focus:ring-amber-400 transition-colors"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Sub-kategori 4: Instalasi MB (Manbox 80x80 s/d 120x120) */}
+            <div className="p-3 rounded-xl bg-[#060c18] border border-slate-800">
+              <div className="flex items-center justify-between mb-2.5 pb-2 border-b border-slate-800/80">
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-purple-400" />
+                  <span className="text-xs font-cyber font-bold text-white uppercase">
+                    4) Instalasi MB (80x80 s/d 120x120)
+                  </span>
+                </div>
+                {/* Tampilkan Total Pcs */}
+                <div className="px-2 py-0.5 rounded bg-purple-950/80 border border-purple-500/40 text-purple-300 font-mono-cyber text-xs font-bold">
+                  Total: {totalMB} Pcs
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                <div className="flex flex-col">
+                  <label htmlFor="input-mb-80" className="h-4 flex items-center text-[11px] font-mono-cyber text-slate-400 mb-1">
+                    MB 80x80
+                  </label>
+                  <input
+                    id="input-mb-80"
+                    type="number"
+                    min="0"
+                    value={formData.instalasiMB.mb80x80}
+                    onChange={(e) => handleNestedChange('instalasiMB', 'mb80x80', e.target.value)}
+                    placeholder="0"
+                    className="w-full h-9 bg-[#091224] border border-slate-700/80 focus:border-purple-400 rounded-lg px-2.5 text-xs font-mono-cyber text-white focus:outline-none focus:ring-1 focus:ring-purple-400 transition-colors"
+                  />
+                </div>
+                <div className="flex flex-col">
+                  <label htmlFor="input-mb-100" className="h-4 flex items-center text-[11px] font-mono-cyber text-slate-400 mb-1">
+                    MB 100x100
+                  </label>
+                  <input
+                    id="input-mb-100"
+                    type="number"
+                    min="0"
+                    value={formData.instalasiMB.mb100x100}
+                    onChange={(e) => handleNestedChange('instalasiMB', 'mb100x100', e.target.value)}
+                    placeholder="0"
+                    className="w-full h-9 bg-[#091224] border border-slate-700/80 focus:border-purple-400 rounded-lg px-2.5 text-xs font-mono-cyber text-white focus:outline-none focus:ring-1 focus:ring-purple-400 transition-colors"
+                  />
+                </div>
+                <div className="flex flex-col">
+                  <label htmlFor="input-mb-120" className="h-4 flex items-center text-[11px] font-mono-cyber text-slate-400 mb-1">
+                    MB 120x120
+                  </label>
+                  <input
+                    id="input-mb-120"
+                    type="number"
+                    min="0"
+                    value={formData.instalasiMB.mb120x120}
+                    onChange={(e) => handleNestedChange('instalasiMB', 'mb120x120', e.target.value)}
+                    placeholder="0"
+                    className="w-full h-9 bg-[#091224] border border-slate-700/80 focus:border-purple-400 rounded-lg px-2.5 text-xs font-mono-cyber text-white focus:outline-none focus:ring-1 focus:ring-purple-400 transition-colors"
+                  />
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </AccordionSection>
+
+        {/* ----------------------------------------------------------------------- */}
+        {/* IV. TIANG, GALVANIS & HDPE */}
+        {/* ----------------------------------------------------------------------- */}
+        <AccordionSection
+          id="accordion-tiang-hdpe"
+          title="IV. Tiang, Galvanis & HDPE"
+          subtitle="Tiang Bersama (Pcs), Galvanis 2 inch & ATB (4/6 inch), HDPE (m)"
+          badge={formData.tiangGalvanisHDPE.tiangBersama ? `${formData.tiangGalvanisHDPE.tiangBersama} Pcs` : ''}
+          isOpen={openAccordions.tiangHdpe}
+          onToggle={() => toggleAccordion('tiangHdpe')}
+          accentColor="blue"
+          icon={<Zap className="w-4 h-4 text-blue-400" />}
+        >
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-2">
+            <div className="flex flex-col">
+              <label 
+                htmlFor="input-tiang-bersama" 
+                className="h-5 flex items-center text-xs font-mono-cyber text-slate-300 mb-1.5 truncate"
+              >
+                Tiang Bersama
+              </label>
+              <div className="relative flex items-center h-10">
+                <input
+                  id="input-tiang-bersama"
+                  type="number"
+                  min="0"
+                  value={formData.tiangGalvanisHDPE.tiangBersama}
+                  onChange={(e) => handleNestedChange('tiangGalvanisHDPE', 'tiangBersama', e.target.value)}
+                  placeholder="0"
+                  className="w-full h-10 bg-[#050b14] border border-slate-700/80 focus:border-blue-400 rounded-xl pl-3 pr-12 text-xs sm:text-sm font-mono-cyber text-white focus:outline-none focus:ring-1 focus:ring-blue-400 transition-colors"
+                />
+                <span className="absolute right-3 text-xs font-mono-cyber text-slate-400 pointer-events-none">
+                  Pcs
+                </span>
+              </div>
+            </div>
+
+            <div className="flex flex-col">
+              <label 
+                htmlFor="input-galvanis-2" 
+                className="h-5 flex items-center text-xs font-mono-cyber text-slate-300 mb-1.5 truncate"
+              >
+                Galvanis 2"
+              </label>
+              <div className="relative flex items-center h-10">
+                <input
+                  id="input-galvanis-2"
+                  type="number"
+                  step="any"
+                  min="0"
+                  value={formData.tiangGalvanisHDPE.galvanis2Inch}
+                  onChange={(e) => handleNestedChange('tiangGalvanisHDPE', 'galvanis2Inch', e.target.value)}
+                  placeholder="0"
+                  className="w-full h-10 bg-[#050b14] border border-slate-700/80 focus:border-blue-400 rounded-xl pl-3 pr-10 text-xs sm:text-sm font-mono-cyber text-white focus:outline-none focus:ring-1 focus:ring-blue-400 transition-colors"
+                />
+                <span className="absolute right-3 text-xs font-mono-cyber text-slate-400 pointer-events-none">
+                  m
+                </span>
+              </div>
+            </div>
+
+            <div className="flex flex-col">
+              <div className="h-5 flex items-center justify-between mb-1.5">
+                <label 
+                  htmlFor="input-galvanis-atb" 
+                  className="text-xs font-mono-cyber text-slate-300 truncate"
+                >
+                  Galvanis ATB
+                </label>
+                <div className="flex items-center gap-1 bg-[#050b14] p-0.5 rounded-lg border border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => handleNestedChange('tiangGalvanisHDPE', 'galvanisATBOption', 'Galv 4"')}
+                    className={`px-2 py-0.5 rounded text-[10px] font-mono-cyber font-semibold transition-all cursor-pointer ${
+                      (formData.tiangGalvanisHDPE.galvanisATBOption || 'Galv 4"') === 'Galv 4"'
+                        ? 'bg-blue-500 text-slate-950 shadow-xs'
+                        : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+                    }`}
+                    title="Opsi Galvanis ATB 4 inch"
+                  >
+                    Galv 4"
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleNestedChange('tiangGalvanisHDPE', 'galvanisATBOption', 'Galv 6"')}
+                    className={`px-2 py-0.5 rounded text-[10px] font-mono-cyber font-semibold transition-all cursor-pointer ${
+                      formData.tiangGalvanisHDPE.galvanisATBOption === 'Galv 6"'
+                        ? 'bg-blue-500 text-slate-950 shadow-xs'
+                        : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+                    }`}
+                    title="Opsi Galvanis ATB 6 inch"
+                  >
+                    Galv 6"
+                  </button>
+                </div>
+              </div>
+              <div className="relative flex items-center h-10">
+                <input
+                  id="input-galvanis-atb"
+                  type="number"
+                  step="any"
+                  min="0"
+                  value={formData.tiangGalvanisHDPE.galvanisATB !== undefined && formData.tiangGalvanisHDPE.galvanisATB !== '' ? formData.tiangGalvanisHDPE.galvanisATB : (formData.tiangGalvanisHDPE.galvanis4Inch || '')}
+                  onChange={(e) => {
+                    handleNestedChange('tiangGalvanisHDPE', 'galvanisATB', e.target.value);
+                    handleNestedChange('tiangGalvanisHDPE', 'galvanis4Inch', e.target.value);
+                  }}
+                  placeholder="0"
+                  className="w-full h-10 bg-[#050b14] border border-slate-700/80 focus:border-blue-400 rounded-xl pl-3 pr-10 text-xs sm:text-sm font-mono-cyber text-white focus:outline-none focus:ring-1 focus:ring-blue-400 transition-colors"
+                />
+                <span className="absolute right-3 text-xs font-mono-cyber text-slate-400 pointer-events-none">
+                  m
+                </span>
+              </div>
+            </div>
+
+            <div className="flex flex-col">
+              <label 
+                htmlFor="input-instal-hdpe" 
+                className="h-5 flex items-center text-xs font-mono-cyber text-slate-300 mb-1.5 truncate"
+              >
+                Instal HDPE
+              </label>
+              <div className="relative flex items-center h-10">
+                <input
+                  id="input-instal-hdpe"
+                  type="number"
+                  step="any"
+                  min="0"
+                  value={formData.tiangGalvanisHDPE.instalHDPE}
+                  onChange={(e) => handleNestedChange('tiangGalvanisHDPE', 'instalHDPE', e.target.value)}
+                  placeholder="0"
+                  className="w-full h-10 bg-[#050b14] border border-slate-700/80 focus:border-blue-400 rounded-xl pl-3 pr-10 text-xs sm:text-sm font-mono-cyber text-white focus:outline-none focus:ring-1 focus:ring-blue-400 transition-colors"
+                />
+                <span className="absolute right-3 text-xs font-mono-cyber text-slate-400 pointer-events-none">
+                  m
+                </span>
+              </div>
+            </div>
+          </div>
+        </AccordionSection>
+
+        {/* ----------------------------------------------------------------------- */}
+        {/* V. DISMANTLING (BONGKAR) */}
+        {/* ----------------------------------------------------------------------- */}
+        <AccordionSection
+          id="accordion-dismantling"
+          title="V. Dismantling (Bongkar)"
+          subtitle="Dismantle Kabel (m), Dismantle Tiang (Pcs)"
+          badge={formData.dismantling.dismantleKabel ? `${formData.dismantling.dismantleKabel} m` : ''}
+          isOpen={openAccordions.dismantling}
+          onToggle={() => toggleAccordion('dismantling')}
+          accentColor="amber"
+          icon={<Trash2 className="w-4 h-4 text-amber-400" />}
+        >
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-2">
+            <div className="flex flex-col">
+              <label 
+                htmlFor="input-dismantle-kabel" 
+                className="h-5 flex items-center text-xs font-mono-cyber text-slate-300 mb-1.5 truncate"
+              >
+                Dismantle Kabel
+              </label>
+              <div className="relative flex items-center h-10">
+                <input
+                  id="input-dismantle-kabel"
+                  type="number"
+                  step="any"
+                  min="0"
+                  value={formData.dismantling.dismantleKabel}
+                  onChange={(e) => handleNestedChange('dismantling', 'dismantleKabel', e.target.value)}
+                  placeholder="0"
+                  className="w-full h-10 bg-[#050b14] border border-slate-700/80 focus:border-amber-400 rounded-xl pl-3 pr-10 text-xs sm:text-sm font-mono-cyber text-white focus:outline-none focus:ring-1 focus:ring-amber-400 transition-colors"
+                />
+                <span className="absolute right-3 text-xs font-mono-cyber text-slate-400 pointer-events-none">
+                  m
+                </span>
+              </div>
+            </div>
+
+            <div className="flex flex-col">
+              <label 
+                htmlFor="input-dismantle-tiang" 
+                className="h-5 flex items-center text-xs font-mono-cyber text-slate-300 mb-1.5 truncate"
+              >
+                Dismantle Tiang
+              </label>
+              <div className="relative flex items-center h-10">
+                <input
+                  id="input-dismantle-tiang"
+                  type="number"
+                  min="0"
+                  value={formData.dismantling.dismantleTiang}
+                  onChange={(e) => handleNestedChange('dismantling', 'dismantleTiang', e.target.value)}
+                  placeholder="0"
+                  className="w-full h-10 bg-[#050b14] border border-slate-700/80 focus:border-amber-400 rounded-xl pl-3 pr-12 text-xs sm:text-sm font-mono-cyber text-white focus:outline-none focus:ring-1 focus:ring-amber-400 transition-colors"
+                />
+                <span className="absolute right-3 text-xs font-mono-cyber text-slate-400 pointer-events-none">
+                  Pcs
+                </span>
+              </div>
+            </div>
+          </div>
+        </AccordionSection>
+      </div>
+    </>
+  )}
+
+      {/* ========================================================================= */}
+      {/* REMARKS (CATATAN KHUSUS LAPANGAN) */}
+      {/* ========================================================================= */}
+      <div id="section-remarks" className="bg-[#091224] border border-purple-500/35 rounded-2xl p-4 sm:p-5 mb-5 shadow-xl shadow-purple-950/20 scroll-mt-24 transition-all space-y-4">
+        <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+          <div className="flex items-center gap-2">
+            <FileText className="w-4 h-4 text-purple-400" />
+            <h3 className="font-cyber font-bold text-sm text-white uppercase tracking-wider">
+              Remarks
+            </h3>
+          </div>
+          <span className="text-[10px] font-mono-cyber text-purple-300 bg-purple-950/80 px-2 py-0.5 rounded border border-purple-500/30 font-medium">
+            {formData.projectCategory === 'Pengamanan' ? 'Catatan & Rincian Item Pengamanan' : 'Catatan Khusus Lapangan'}
+          </span>
+        </div>
+
+        {/* ========================================================================= */}
+        {/* KHUSUS PENGAMANAN: INPUT ITEM DIDALAM REMARKS */}
+        {/* ========================================================================= */}
+        {formData.projectCategory === 'Pengamanan' && (
+          <div className="bg-[#050b14]/90 border border-amber-500/40 rounded-xl p-3.5 sm:p-4 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2.5 border-b border-slate-800/80">
+              <div className="flex items-center gap-2">
+                <Shield className="w-4 h-4 text-amber-400 shrink-0" />
+                <span className="text-xs font-cyber font-bold text-amber-300 uppercase tracking-wide">
+                  Item Pekerjaan Pengamanan (Didalam Remarks)
+                </span>
+              </div>
+              <span className="text-[10px] font-mono-cyber text-slate-400">
+                Isi nilai item bila ada aktivitas terkait di lapangan
+              </span>
+            </div>
+
+            {/* 1. Penarikan Kabel / Pulling (Meter) */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-[11px] font-mono-cyber text-emerald-300 font-semibold flex items-center gap-1.5">
+                  <Cable className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>1. Penarikan Kabel / Pulling (Meter)</span>
+                </label>
+                <span className="text-[10px] font-mono-cyber text-slate-400">
+                  Total FO: <strong className="text-emerald-300">{formData.totalProgressKabel || '0'} m</strong>
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                {/* Kabel Fiber Optic (FO) dengan option pilihan */}
+                <div className="p-2.5 rounded-xl bg-[#08101e] border border-emerald-500/30 space-y-1.5">
+                  <div className="flex items-center justify-between gap-1">
+                    <label htmlFor="select-remarks-fo" className="text-[10px] font-mono-cyber text-emerald-300 font-semibold">
+                      Kabel Fiber Optic (FO):
+                    </label>
+                    <select
+                      id="select-remarks-fo"
+                      value={selectedRemarksFO}
+                      onChange={(e) => setSelectedRemarksFO(e.target.value as keyof PullingProgress)}
+                      className="h-6 text-[11px] font-mono-cyber bg-[#050b14] border border-emerald-500/50 text-emerald-300 rounded-lg px-2 focus:outline-none focus:ring-1 focus:ring-emerald-400 cursor-pointer"
+                    >
+                      {FO_CABLE_OPTIONS.map((opt) => (
+                        <option key={opt.key} value={opt.key}>
+                          FO {opt.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="relative">
+                    <input
+                      id="input-remarks-fo-val"
+                      type="number"
+                      step="any"
+                      min="0"
+                      value={formData.pulling[selectedRemarksFO] || ''}
+                      onChange={(e) => handleNestedChange('pulling', selectedRemarksFO, e.target.value)}
+                      placeholder={`0 meter (${FO_CABLE_OPTIONS.find(o => o.key === selectedRemarksFO)?.label})`}
+                      className="w-full h-9 bg-[#050b14] border border-slate-700/80 focus:border-emerald-400 rounded-lg pl-3 pr-12 text-xs font-mono-cyber text-white focus:outline-none focus:ring-1 focus:ring-emerald-400"
+                    />
+                    <span className="absolute right-3 top-2 text-[10px] font-mono-cyber text-slate-400 pointer-events-none">Meter</span>
+                  </div>
+
+                  {/* Chips daftar tipe kabel FO yang terisi > 0 */}
+                  {FO_CABLE_OPTIONS.some((opt) => parseFloat(formData.pulling[opt.key] || '0') > 0) && (
+                    <div className="flex items-center gap-1 flex-wrap pt-0.5">
+                      <span className="text-[9px] font-mono-cyber text-slate-400">Terisi:</span>
+                      {FO_CABLE_OPTIONS.filter((opt) => parseFloat(formData.pulling[opt.key] || '0') > 0).map((opt) => (
+                        <button
+                          key={opt.key}
+                          type="button"
+                          onClick={() => setSelectedRemarksFO(opt.key)}
+                          className={`text-[9px] font-mono-cyber px-1.5 py-0.5 rounded border transition-colors cursor-pointer ${
+                            selectedRemarksFO === opt.key
+                              ? 'bg-emerald-950 border-emerald-400 text-emerald-300 font-bold'
+                              : 'bg-[#050b14] border-slate-700 text-slate-300 hover:border-emerald-500/50'
+                          }`}
+                        >
+                          {opt.label}: {formData.pulling[opt.key]}m
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Kabel Coaxial */}
+                <div className="p-2.5 rounded-xl bg-[#08101e] border border-blue-500/30 space-y-1.5">
+                  <div className="flex items-center justify-between gap-1 h-6">
+                    <label htmlFor="input-remarks-coax" className="text-[10px] font-mono-cyber text-blue-300 font-semibold">
+                      Kabel Coaxial:
+                    </label>
+                    <span className="text-[9px] font-mono-cyber text-blue-400/80">Coax Cable</span>
+                  </div>
+                  <div className="relative">
+                    <input
+                      id="input-remarks-coax"
+                      type="number"
+                      step="any"
+                      min="0"
+                      value={formData.pulling?.pullingCoax || ''}
+                      onChange={(e) => handleNestedChange('pulling', 'pullingCoax', e.target.value)}
+                      placeholder="0"
+                      className="w-full h-9 bg-[#050b14] border border-slate-700/80 focus:border-blue-400 rounded-lg pl-3 pr-12 text-xs font-mono-cyber text-white focus:outline-none focus:ring-1 focus:ring-blue-400"
+                    />
+                    <span className="absolute right-3 top-2 text-[10px] font-mono-cyber text-slate-400 pointer-events-none">Meter</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* 2. Instalasi Pit: HH, HB, MH (Pcs) dengan option ukuran */}
+            <div className="space-y-2 pt-2 border-t border-slate-800/60">
+              <div className="flex items-center justify-between">
+                <label className="text-[11px] font-mono-cyber text-amber-300 font-semibold flex items-center gap-1.5">
+                  <Boxes className="w-3.5 h-3.5 text-amber-400" />
+                  <span>2. Instalasi Pit: HH, HB, MH (Pcs)</span>
+                </label>
+                <span className="text-[10px] font-mono-cyber text-slate-400">
+                  Total Pit: <strong className="text-amber-300">{totalHH + totalHB + totalMH} Pcs</strong>
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                {/* Handhole (HH) */}
+                <div className="p-2.5 rounded-xl bg-[#08101e] border border-amber-500/30 space-y-1.5">
+                  <div className="flex items-center justify-between gap-1">
+                    <label htmlFor="select-remarks-hh" className="text-[10px] font-mono-cyber text-amber-300 font-semibold">
+                      Handhole (HH):
+                    </label>
+                    <select
+                      id="select-remarks-hh"
+                      value={selectedRemarksHH}
+                      onChange={(e) => setSelectedRemarksHH(e.target.value as keyof HHProgress)}
+                      className="h-6 text-[11px] font-mono-cyber bg-[#050b14] border border-amber-500/50 text-amber-300 rounded-lg px-2 focus:outline-none focus:ring-1 focus:ring-amber-400 cursor-pointer"
+                    >
+                      {PIT_SIZE_OPTIONS.map((opt) => (
+                        <option key={opt.id} value={`hh${opt.id}`}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="relative">
+                    <input
+                      id="input-remarks-hh-val"
+                      type="number"
+                      min="0"
+                      value={formData.instalasiHH[selectedRemarksHH] || ''}
+                      onChange={(e) => handleNestedChange('instalasiHH', selectedRemarksHH, e.target.value)}
+                      placeholder="0"
+                      className="w-full h-9 bg-[#050b14] border border-slate-700/80 focus:border-amber-400 rounded-lg pl-2.5 pr-10 text-xs font-mono-cyber text-white focus:outline-none focus:ring-1 focus:ring-amber-400"
+                    />
+                    <span className="absolute right-2.5 top-2 text-[10px] font-mono-cyber text-slate-400 pointer-events-none">Pcs</span>
+                  </div>
+
+                  {/* Chips ukuran HH terisi */}
+                  {PIT_SIZE_OPTIONS.some((opt) => parseFloat(formData.instalasiHH[`hh${opt.id}` as keyof HHProgress] || '0') > 0) && (
+                    <div className="flex items-center gap-1 flex-wrap pt-0.5">
+                      {PIT_SIZE_OPTIONS.filter((opt) => parseFloat(formData.instalasiHH[`hh${opt.id}` as keyof HHProgress] || '0') > 0).map((opt) => (
+                        <button
+                          key={opt.id}
+                          type="button"
+                          onClick={() => setSelectedRemarksHH(`hh${opt.id}` as keyof HHProgress)}
+                          className={`text-[9px] font-mono-cyber px-1.5 py-0.5 rounded border transition-colors cursor-pointer ${
+                            selectedRemarksHH === `hh${opt.id}`
+                              ? 'bg-amber-950 border-amber-400 text-amber-300 font-bold'
+                              : 'bg-[#050b14] border-slate-700 text-slate-300 hover:border-amber-500/50'
+                          }`}
+                        >
+                          {opt.label}: {formData.instalasiHH[`hh${opt.id}` as keyof HHProgress]}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Handbox (HB) */}
+                <div className="p-2.5 rounded-xl bg-[#08101e] border border-orange-500/30 space-y-1.5">
+                  <div className="flex items-center justify-between gap-1">
+                    <label htmlFor="select-remarks-hb" className="text-[10px] font-mono-cyber text-orange-300 font-semibold">
+                      Handbox (HB):
+                    </label>
+                    <select
+                      id="select-remarks-hb"
+                      value={selectedRemarksHB}
+                      onChange={(e) => setSelectedRemarksHB(e.target.value as keyof HBProgress)}
+                      className="h-6 text-[11px] font-mono-cyber bg-[#050b14] border border-orange-500/50 text-orange-300 rounded-lg px-2 focus:outline-none focus:ring-1 focus:ring-orange-400 cursor-pointer"
+                    >
+                      {PIT_SIZE_OPTIONS.map((opt) => (
+                        <option key={opt.id} value={`hb${opt.id}`}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="relative">
+                    <input
+                      id="input-remarks-hb-val"
+                      type="number"
+                      min="0"
+                      value={formData.instalasiHB[selectedRemarksHB] || ''}
+                      onChange={(e) => handleNestedChange('instalasiHB', selectedRemarksHB, e.target.value)}
+                      placeholder="0"
+                      className="w-full h-9 bg-[#050b14] border border-slate-700/80 focus:border-orange-400 rounded-lg pl-2.5 pr-10 text-xs font-mono-cyber text-white focus:outline-none focus:ring-1 focus:ring-orange-400"
+                    />
+                    <span className="absolute right-2.5 top-2 text-[10px] font-mono-cyber text-slate-400 pointer-events-none">Pcs</span>
+                  </div>
+
+                  {/* Chips ukuran HB terisi */}
+                  {PIT_SIZE_OPTIONS.some((opt) => parseFloat(formData.instalasiHB[`hb${opt.id}` as keyof HBProgress] || '0') > 0) && (
+                    <div className="flex items-center gap-1 flex-wrap pt-0.5">
+                      {PIT_SIZE_OPTIONS.filter((opt) => parseFloat(formData.instalasiHB[`hb${opt.id}` as keyof HBProgress] || '0') > 0).map((opt) => (
+                        <button
+                          key={opt.id}
+                          type="button"
+                          onClick={() => setSelectedRemarksHB(`hb${opt.id}` as keyof HBProgress)}
+                          className={`text-[9px] font-mono-cyber px-1.5 py-0.5 rounded border transition-colors cursor-pointer ${
+                            selectedRemarksHB === `hb${opt.id}`
+                              ? 'bg-orange-950 border-orange-400 text-orange-300 font-bold'
+                              : 'bg-[#050b14] border-slate-700 text-slate-300 hover:border-orange-500/50'
+                          }`}
+                        >
+                          {opt.label}: {formData.instalasiHB[`hb${opt.id}` as keyof HBProgress]}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Manhole (MH) */}
+                <div className="p-2.5 rounded-xl bg-[#08101e] border border-purple-500/30 space-y-1.5">
+                  <div className="flex items-center justify-between gap-1">
+                    <label htmlFor="select-remarks-mh" className="text-[10px] font-mono-cyber text-purple-300 font-semibold">
+                      Manhole (MH):
+                    </label>
+                    <select
+                      id="select-remarks-mh"
+                      value={selectedRemarksMH}
+                      onChange={(e) => setSelectedRemarksMH(e.target.value as keyof MHProgress)}
+                      className="h-6 text-[11px] font-mono-cyber bg-[#050b14] border border-purple-500/50 text-purple-300 rounded-lg px-2 focus:outline-none focus:ring-1 focus:ring-purple-400 cursor-pointer"
+                    >
+                      {PIT_SIZE_OPTIONS.map((opt) => (
+                        <option key={opt.id} value={`mh${opt.id}`}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="relative">
+                    <input
+                      id="input-remarks-mh-val"
+                      type="number"
+                      min="0"
+                      value={formData.instalasiMH[selectedRemarksMH] || ''}
+                      onChange={(e) => handleNestedChange('instalasiMH', selectedRemarksMH, e.target.value)}
+                      placeholder="0"
+                      className="w-full h-9 bg-[#050b14] border border-slate-700/80 focus:border-purple-400 rounded-lg pl-2.5 pr-10 text-xs font-mono-cyber text-white focus:outline-none focus:ring-1 focus:ring-purple-400"
+                    />
+                    <span className="absolute right-2.5 top-2 text-[10px] font-mono-cyber text-slate-400 pointer-events-none">Pcs</span>
+                  </div>
+
+                  {/* Chips ukuran MH terisi */}
+                  {PIT_SIZE_OPTIONS.some((opt) => parseFloat(formData.instalasiMH[`mh${opt.id}` as keyof MHProgress] || '0') > 0) && (
+                    <div className="flex items-center gap-1 flex-wrap pt-0.5">
+                      {PIT_SIZE_OPTIONS.filter((opt) => parseFloat(formData.instalasiMH[`mh${opt.id}` as keyof MHProgress] || '0') > 0).map((opt) => (
+                        <button
+                          key={opt.id}
+                          type="button"
+                          onClick={() => setSelectedRemarksMH(`mh${opt.id}` as keyof MHProgress)}
+                          className={`text-[9px] font-mono-cyber px-1.5 py-0.5 rounded border transition-colors cursor-pointer ${
+                            selectedRemarksMH === `mh${opt.id}`
+                              ? 'bg-purple-950 border-purple-400 text-purple-300 font-bold'
+                              : 'bg-[#050b14] border-slate-700 text-slate-300 hover:border-purple-500/50'
+                          }`}
+                        >
+                          {opt.label}: {formData.instalasiMH[`mh${opt.id}` as keyof MHProgress]}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* 3. Tiang, Galvanis dan HDPE */}
+            <div className="space-y-2 pt-2 border-t border-slate-800/60">
+              <label className="text-[11px] font-mono-cyber text-cyan-300 font-semibold flex items-center gap-1.5">
+                <Zap className="w-3.5 h-3.5 text-cyan-400" />
+                <span>3. Tiang, Galvanis & HDPE</span>
+              </label>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <div>
+                  <label className="block text-[10px] font-mono-cyber text-slate-400 mb-1">
+                    Tiang Bersama:
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      min="0"
+                      value={formData.tiangGalvanisHDPE.tiangBersama || ''}
+                      onChange={(e) => handleNestedChange('tiangGalvanisHDPE', 'tiangBersama', e.target.value)}
+                      placeholder="0"
+                      className="w-full h-9 bg-[#091224] border border-slate-700/80 focus:border-cyan-400 rounded-xl pl-2.5 pr-8 text-xs font-mono-cyber text-white focus:outline-none focus:ring-1 focus:ring-cyan-400"
+                    />
+                    <span className="absolute right-2.5 top-2 text-[10px] font-mono-cyber text-slate-400 pointer-events-none">Pcs</span>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-mono-cyber text-slate-400 mb-1">
+                    Pipa Galvanis:
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      min="0"
+                      value={formData.tiangGalvanisHDPE.galvanis2Inch || ''}
+                      onChange={(e) => handleNestedChange('tiangGalvanisHDPE', 'galvanis2Inch', e.target.value)}
+                      placeholder="0"
+                      className="w-full h-9 bg-[#091224] border border-slate-700/80 focus:border-cyan-400 rounded-xl pl-2.5 pr-8 text-xs font-mono-cyber text-white focus:outline-none focus:ring-1 focus:ring-cyan-400"
+                    />
+                    <span className="absolute right-2.5 top-2 text-[10px] font-mono-cyber text-slate-400 pointer-events-none">m</span>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-mono-cyber text-slate-400 mb-1">
+                    Instal HDPE:
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      min="0"
+                      value={formData.tiangGalvanisHDPE.instalHDPE || ''}
+                      onChange={(e) => handleNestedChange('tiangGalvanisHDPE', 'instalHDPE', e.target.value)}
+                      placeholder="0"
+                      className="w-full h-9 bg-[#091224] border border-slate-700/80 focus:border-cyan-400 rounded-xl pl-2.5 pr-8 text-xs font-mono-cyber text-white focus:outline-none focus:ring-1 focus:ring-cyan-400"
+                    />
+                    <span className="absolute right-2.5 top-2 text-[10px] font-mono-cyber text-slate-400 pointer-events-none">m</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* 4. Dismantling (Bongkar) */}
+            <div className="space-y-2 pt-2 border-t border-slate-800/60">
+              <label className="text-[11px] font-mono-cyber text-rose-300 font-semibold flex items-center gap-1.5">
+                <Trash2 className="w-3.5 h-3.5 text-rose-400" />
+                <span>4. Dismantling (Bongkar)</span>
+              </label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <div>
+                  <label className="block text-[10px] font-mono-cyber text-slate-400 mb-1">
+                    Dismantle Kabel:
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      min="0"
+                      value={formData.dismantling.dismantleKabel || ''}
+                      onChange={(e) => handleNestedChange('dismantling', 'dismantleKabel', e.target.value)}
+                      placeholder="0"
+                      className="w-full h-9 bg-[#091224] border border-slate-700/80 focus:border-rose-400 rounded-xl pl-3 pr-10 text-xs font-mono-cyber text-white focus:outline-none focus:ring-1 focus:ring-rose-400"
+                    />
+                    <span className="absolute right-3 top-2 text-[10px] font-mono-cyber text-slate-400 pointer-events-none">Meter</span>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-mono-cyber text-slate-400 mb-1">
+                    Dismantle Tiang:
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      min="0"
+                      value={formData.dismantling.dismantleTiang || ''}
+                      onChange={(e) => handleNestedChange('dismantling', 'dismantleTiang', e.target.value)}
+                      placeholder="0"
+                      className="w-full h-9 bg-[#091224] border border-slate-700/80 focus:border-rose-400 rounded-xl pl-3 pr-10 text-xs font-mono-cyber text-white focus:outline-none focus:ring-1 focus:ring-rose-400"
+                    />
+                    <span className="absolute right-3 top-2 text-[10px] font-mono-cyber text-slate-400 pointer-events-none">Pcs</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Tombol Sisipkan Format Rincian ke Catatan */}
+            <div className="pt-2 flex justify-end">
+              <button
+                type="button"
+                onClick={() => {
+                  const activeFO = FO_CABLE_OPTIONS
+                    .filter(opt => parseFloat(formData.pulling[opt.key] || '0') > 0)
+                    .map(opt => `${opt.label} (${formData.pulling[opt.key]}m)`);
+                  const foSummary = activeFO.length > 0 
+                    ? `FO: ${activeFO.join(', ')}` 
+                    : (parseFloat(formData.totalProgressKabel || '0') > 0 ? `FO: ${formData.totalProgressKabel}m` : 'FO: 0m');
+                  
+                  const coaxVal = formData.pulling?.pullingCoax || '0';
+                  const coaxSummary = parseFloat(coaxVal) > 0 ? `, Coax: ${coaxVal}m` : '';
+
+                  const activeHH = PIT_SIZE_OPTIONS
+                    .filter(opt => parseFloat(formData.instalasiHH[`hh${opt.id}` as keyof HHProgress] || '0') > 0)
+                    .map(opt => `${opt.label} (${formData.instalasiHH[`hh${opt.id}` as keyof HHProgress]} Pcs)`);
+                  const hhSummary = activeHH.length > 0 ? `HH [${activeHH.join(', ')}]` : `HH: ${formData.totalProgressHH || '0'} Pcs`;
+
+                  const activeHB = PIT_SIZE_OPTIONS
+                    .filter(opt => parseFloat(formData.instalasiHB[`hb${opt.id}` as keyof HBProgress] || '0') > 0)
+                    .map(opt => `${opt.label} (${formData.instalasiHB[`hb${opt.id}` as keyof HBProgress]} Pcs)`);
+                  const hbSummary = activeHB.length > 0 ? `HB [${activeHB.join(', ')}]` : `HB: ${formData.totalProgressHB || '0'} Pcs`;
+
+                  const activeMH = PIT_SIZE_OPTIONS
+                    .filter(opt => parseFloat(formData.instalasiMH[`mh${opt.id}` as keyof MHProgress] || '0') > 0)
+                    .map(opt => `${opt.label} (${formData.instalasiMH[`mh${opt.id}` as keyof MHProgress]} Pcs)`);
+                  const mhSummary = activeMH.length > 0 ? `MH [${activeMH.join(', ')}]` : `MH: ${formData.totalProgressMH || '0'} Pcs`;
+
+                  const tiangVal = formData.tiangGalvanisHDPE.tiangBersama || '0';
+                  const galvVal = formData.tiangGalvanisHDPE.galvanis2Inch || '0';
+                  const hdpeVal = formData.tiangGalvanisHDPE.instalHDPE || '0';
+                  const disKabelVal = formData.dismantling.dismantleKabel || '0';
+                  const disTiangVal = formData.dismantling.dismantleTiang || '0';
+
+                  const textLines = [
+                    `[Rincian Item Pengamanan]`,
+                    `• Penarikan Kabel: ${foSummary}${coaxSummary}`,
+                    `• Instalasi Pit: ${hhSummary}, ${hbSummary}, ${mhSummary}`,
+                    `• Tiang, Galvanis & HDPE: Tiang ${tiangVal} Pcs, Galv ${galvVal} m, HDPE ${hdpeVal} m`,
+                    `• Dismantling: Kabel ${disKabelVal} m, Tiang ${disTiangVal} Pcs`
+                  ];
+
+                  const current = formData.remarks ? formData.remarks.trim() + '\n\n' : '';
+                  handleTopLevelChange('remarks', current + textLines.join('\n'));
+                }}
+                className="text-xs font-mono-cyber px-3 py-1.5 rounded-lg bg-amber-950/60 border border-amber-500/40 text-amber-300 hover:bg-amber-900/60 transition-colors flex items-center gap-1.5 cursor-pointer"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                <span>+ Salin Format Rincian ke Catatan Remarks</span>
+              </button>
+            </div>
+          </div>
+        )}
+        
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-slate-800">
+          <div className="text-xs font-mono-cyber text-slate-400">Template Cepat:</div>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {formData.projectCategory === 'Pengamanan' ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => handleTopLevelChange('remarks', 'Pengamanan aset jaringan dan perapihan kabel utilitas berjalan aman dan tertib.')}
+                  className="text-[10px] font-mono-cyber px-2 py-1 rounded-lg bg-amber-950/60 border border-amber-500/40 text-amber-300 hover:bg-amber-900/60 transition-colors cursor-pointer"
+                >
+                  + 'Pengamanan aset & perapihan'
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleTopLevelChange('remarks', 'Koordinasi lapangan dengan dinas/pihak terkait telah dilakukan, pengawasan berlanjut.')}
+                  className="text-[10px] font-mono-cyber px-2 py-1 rounded-lg bg-slate-800/80 border border-slate-700 text-slate-300 hover:text-white hover:bg-slate-700 transition-colors cursor-pointer"
+                >
+                  + 'Koordinasi dinas terkait'
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={() => handleTopLevelChange('remarks', 'Pekerjaan harian berjalan normal sesuai jadwal.')}
+                  className="text-[10px] font-mono-cyber px-2 py-1 rounded-lg bg-purple-950/60 border border-purple-500/40 text-purple-300 hover:bg-purple-900/60 transition-colors cursor-pointer"
+                >
+                  + 'Normal sesuai jadwal'
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleTopLevelChange('remarks', 'Progress dilanjutkan besok pagi sesuai koordinasi waspang.')}
+                  className="text-[10px] font-mono-cyber px-2 py-1 rounded-lg bg-slate-800/80 border border-slate-700 text-slate-300 hover:text-white hover:bg-slate-700 transition-colors cursor-pointer"
+                >
+                  + 'Lanjut besok'
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+
+        <div>
+          <label className="block text-[11px] font-mono-cyber text-slate-400 mb-1">
+            Catatan Tambahan / Teks Remarks:
+          </label>
+          <textarea
+            id="input-remarks"
+            rows={3}
+            value={formData.remarks || ''}
+            onChange={(e) => handleTopLevelChange('remarks', e.target.value)}
+            placeholder="Tuliskan catatan khusus, remarks teknis, metode pelaksanaan, atau detail tambahan pekerjaan lapangan..."
+            className="w-full bg-[#050b14] border border-slate-700/80 focus:border-purple-400 rounded-xl p-3 text-xs sm:text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-purple-400 transition-colors leading-relaxed"
+          />
+        </div>
+      </div>
+
+      {/* ========================================================================= */}
+      {/* CATATAN AKHIR: KENDALA / ISU LAPANGAN */}
+      {/* ========================================================================= */}
+      <div id="section-kendala-lapangan" className="bg-[#091224] border border-cyan-500/30 rounded-2xl p-4 sm:p-5 mb-8 shadow-xl shadow-cyan-950/20 scroll-mt-24 transition-all space-y-4">
+        <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-amber-400" />
+            <h3 className="font-cyber font-bold text-sm text-white uppercase tracking-wider">
+              Catatan Akhir: Kendala / Isu Lapangan
+            </h3>
+          </div>
+          <button
+            type="button"
+            onClick={() => handleTopLevelChange('kendalaLapangan', 'Tidak ada kendala')}
+            className="text-[10px] font-mono-cyber px-2.5 py-1 rounded-lg bg-emerald-950/70 border border-emerald-500/40 text-emerald-300 hover:bg-emerald-900/70 cursor-pointer font-medium"
+          >
+            + Set 'Tidak ada kendala'
+          </button>
+        </div>
+        
+        <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+          <span className="text-xs font-mono-cyber text-slate-400">Isu & Hambatan Teknis</span>
+        </div>
+        <div>
+          <textarea
+            id="input-kendala-lapangan"
+            rows={3}
+            value={formData.kendalaLapangan}
+            onChange={(e) => handleTopLevelChange('kendalaLapangan', e.target.value)}
+            placeholder="Sebutkan kendala perizinan, sosial, cuaca ekstrim, blocker material, atau tulis 'Tidak ada kendala'..."
+            className="w-full bg-[#050b14] border border-slate-700/80 focus:border-cyan-400 rounded-xl p-3 text-xs sm:text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-cyan-400 transition-colors leading-relaxed"
+          />
+        </div>
+      </div>
+
+      {/* ========================================================================= */}
+      {/* ACTION BUTTON: STICKY BOTTOM HP BAR (PROPORTIONAL SIZE) */}
+      {/* ========================================================================= */}
+      <div className="fixed bottom-0 left-0 right-0 z-40 bg-[#060c18]/95 backdrop-blur-md border-t border-slate-800/80 px-3 py-2.5 shadow-2xl shadow-black/80">
+        <div className="max-w-md mx-auto flex items-center justify-center gap-2">
+          {isEditing && onCancelEdit && (
+            <button
+              type="button"
+              onClick={onCancelEdit}
+              className="py-2.5 px-3.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-cyber text-xs border border-slate-700 active:scale-95 transition-all cursor-pointer shrink-0 flex items-center gap-1.5 shadow-sm"
+              title="Kembali ke formulir laporan baru"
+            >
+              <ArrowLeft className="w-3.5 h-3.5 text-cyan-400" />
+              <span>Kembali</span>
+            </button>
+          )}
+
+          {onOpenClearScreen && (
+            <button
+              type="button"
+              onClick={onOpenClearScreen}
+              className="py-2.5 px-3 rounded-xl bg-amber-950/70 hover:bg-amber-900/80 text-amber-300 hover:text-amber-200 font-cyber text-xs border border-amber-500/40 active:scale-95 transition-all cursor-pointer shrink-0 flex items-center gap-1.5 shadow-sm"
+              title="Bersihkan layar untuk membuat daily progress baru"
+            >
+              <Eraser className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+              <span className="hidden xs:inline font-semibold">Clear Screen</span>
+            </button>
+          )}
+
+          <button
+            id="btn-simpan-laporan"
+            type="submit"
+            className={`w-full max-w-xs sm:max-w-sm py-2.5 px-4 rounded-xl ${
+              isEditing 
+                ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-slate-950 shadow-emerald-500/20' 
+                : 'bg-gradient-to-r from-amber-400 via-amber-500 to-orange-500 hover:from-amber-300 hover:to-orange-400 text-slate-950 shadow-amber-500/20'
+            } font-bold font-cyber tracking-wide uppercase text-xs shadow-md active:scale-[0.98] transition-all flex items-center justify-center gap-2 cursor-pointer border border-amber-300/30`}
+          >
+            {isEditing ? (
+              <>
+                <Check className="w-3.5 h-3.5 text-slate-950 shrink-0" />
+                <span className="truncate">Update & Simpan Laporan</span>
+              </>
+            ) : (
+              <>
+                <Send className="w-3.5 h-3.5 text-slate-950 shrink-0" />
+                <span className="truncate">Simpan Laporan Progress Harian</span>
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+
+    </form>
+  );
+};
